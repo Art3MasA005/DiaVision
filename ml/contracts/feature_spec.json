@@ -1,0 +1,290 @@
+{
+  "$comment": [
+    "THE CONTRACT. The Postgres HealthProfile table, the /risk/assess request",
+    "schema, and the Flutter onboarding wizard are all generated from or",
+    "validated against this file. Change it and all three change together.",
+    "",
+    "STATUS: provisional (v0.1). Fields marked audit_pending are decided by the",
+    "leakage audit in docs/leakage_audit.md, which needs BRFSS. Nothing here is",
+    "frozen until status == 'frozen' and audit_completed_at is set.",
+    "",
+    "Canonical units are SI and are stored as such (PRD 13.2). Display units are",
+    "a per-region presentation concern and never reach this layer."
+  ],
+  "version": "0.1.0",
+  "status": "provisional",
+  "audit_completed_at": null,
+  "created_at": "2026-08-14",
+
+  "tiers": {
+    "1": {
+      "name": "Screening",
+      "requires_labs": false,
+      "description": "Questionnaire + anthropometry only. What most users get.",
+      "ui_label_key": "risk.tier1.basis"
+    },
+    "2": {
+      "name": "High confidence",
+      "requires_labs": true,
+      "description": "Adds user-entered lab values. Narrower estimate.",
+      "ui_label_key": "risk.tier2.basis"
+    }
+  },
+
+  "features": [
+    {
+      "name": "age_years",
+      "type": "integer",
+      "tier": 1,
+      "required": true,
+      "range": [18, 120],
+      "modifiable": false,
+      "status": "allowed",
+      "sources": { "brfss": "_AGEG5YR (banded — midpoint decode)", "diabd": "Age", "nhanes": "RIDAGEYR" },
+      "notes": "Hard block below 18 (PRD 3.3). BRFSS ships 5-year bands, not integers; decode to band midpoints and record that the training age is coarser than the runtime age.",
+      "ui_key": "profile.age"
+    },
+    {
+      "name": "sex_at_birth",
+      "type": "categorical",
+      "values": ["male", "female"],
+      "tier": 1,
+      "required": true,
+      "modifiable": false,
+      "status": "allowed",
+      "sources": { "brfss": "SEX", "diabd": "Gender", "nhanes": "RIAGENDR" },
+      "notes": "Needed for BMR, waist cutoffs, and the gestational-diabetes branch. Distinct from gender identity; the UI must say 'sex at birth' and explain why.",
+      "ui_key": "profile.sex"
+    },
+    {
+      "name": "height_cm",
+      "type": "float",
+      "tier": 1,
+      "required": true,
+      "range": [100.0, 250.0],
+      "unit": "cm",
+      "modifiable": false,
+      "status": "allowed",
+      "sources": { "brfss": "HTM4", "diabd": "derive from BMI+weight if absent", "nhanes": "BMXHT" },
+      "notes": "Collected to derive BMI and waist-to-height ratio. Not a model input on its own.",
+      "ui_key": "profile.height"
+    },
+    {
+      "name": "weight_kg",
+      "type": "float",
+      "tier": 1,
+      "required": true,
+      "range": [25.0, 300.0],
+      "unit": "kg",
+      "modifiable": true,
+      "status": "allowed",
+      "sources": { "brfss": "WTKG3", "diabd": "derive", "nhanes": "BMXWT" },
+      "ui_key": "profile.weight"
+    },
+    {
+      "name": "waist_cm",
+      "type": "float",
+      "tier": 1,
+      "required": true,
+      "range": [40.0, 200.0],
+      "unit": "cm",
+      "modifiable": true,
+      "status": "allowed",
+      "sources": { "brfss": "NOT PRESENT", "diabd": "check", "nhanes": "BMXWAIST" },
+      "notes": "CRITICAL for South Asians (PRD 7.1) and an IDRS input. BRFSS 2015 has no waist variable, so the pretraining corpus cannot supply it — the model must handle waist as missing-at-pretrain and present-at-finetune. LightGBM handles missing natively; do NOT impute it.",
+      "ui_key": "profile.waist"
+    },
+    {
+      "name": "family_history",
+      "type": "categorical",
+      "values": ["none", "second_degree", "first_degree"],
+      "tier": 1,
+      "required": true,
+      "modifiable": false,
+      "status": "allowed",
+      "sources": { "brfss": "NOT PRESENT", "diabd": "family history of diabetes (binary)", "nhanes": "MCQ300C" },
+      "notes": "Strongest non-modifiable factor and the hook for the Family tier (PRD F11). DiaBD is binary; map to none/first_degree and record the information loss.",
+      "ui_key": "profile.family_history"
+    },
+    {
+      "name": "physical_activity",
+      "type": "ordinal",
+      "values": ["sedentary", "light", "moderate", "active", "very_active"],
+      "tier": 1,
+      "required": true,
+      "modifiable": true,
+      "status": "allowed",
+      "sources": { "brfss": "_TOTINDA (binary any-activity)", "diabd": "check", "nhanes": "PAQ605/PAQ620/PAQ650" },
+      "notes": "IDRS input. BRFSS only distinguishes any/none — a 5-level runtime scale trained on a 2-level source is a real mismatch; collapse at training time, not at runtime.",
+      "ui_key": "profile.activity"
+    },
+    {
+      "name": "smoker",
+      "type": "boolean",
+      "tier": 1,
+      "required": true,
+      "modifiable": true,
+      "status": "allowed",
+      "sources": { "brfss": "SMOKE100", "diabd": "check", "nhanes": "SMQ020" },
+      "ui_key": "profile.smoking"
+    },
+    {
+      "name": "gestational_diabetes_history",
+      "type": "boolean",
+      "tier": 1,
+      "required": false,
+      "conditional_on": { "sex_at_birth": "female" },
+      "modifiable": false,
+      "status": "allowed",
+      "sources": { "brfss": "DIABETE3 == 2", "nhanes": "DIQ175?" },
+      "notes": "ADA Risk Test input. Null for male profiles — null means not-applicable here, not unknown.",
+      "ui_key": "profile.gestational"
+    },
+
+    {
+      "name": "known_high_bp",
+      "type": "boolean",
+      "tier": 1,
+      "required": true,
+      "modifiable": true,
+      "status": "audit_pending",
+      "sources": { "brfss": "_RFHYPE5", "diabd": "derive from systolic/diastolic", "nhanes": "BPQ020" },
+      "notes": "LEAKAGE SUSPECT (Playbook B2). Hypertension is frequently diagnosed at the same visit as the diabetes, so in BRFSS it partly encodes 'has seen a doctor recently' rather than physiology — and our target user has never seen a doctor. Note it is nonetheless a legitimate FINDRISC/ADA input, so it may survive in the clinical-score layer even if the audit drops it from the GBM. Decide with the with/without AUC delta.",
+      "ui_key": "profile.high_bp"
+    },
+    {
+      "name": "on_bp_meds",
+      "type": "boolean",
+      "tier": 1,
+      "required": true,
+      "modifiable": false,
+      "status": "audit_pending",
+      "sources": { "brfss": "BPMEDS", "nhanes": "BPQ040A/BPQ050A" },
+      "notes": "LEAKAGE SUSPECT for the same reason as known_high_bp, and more strongly — being medicated requires a prescription, which requires a doctor. FINDRISC input.",
+      "ui_key": "profile.bp_meds"
+    },
+    {
+      "name": "history_high_glucose",
+      "type": "boolean",
+      "tier": 1,
+      "required": true,
+      "modifiable": false,
+      "status": "audit_pending",
+      "sources": { "brfss": "PREDIAB1", "nhanes": "DIQ160" },
+      "notes": "STRONGEST LEAKAGE SUSPECT. 'Have you ever been told you have high blood sugar' is close to the label itself for anyone in the healthcare system, and is unanswerable for someone who has never been tested. Expect a large AUC drop when removed — that drop is the point, not a reason to keep it. Carries a 5-point FINDRISC weight, the largest single item there.",
+      "ui_key": "profile.high_glucose_history"
+    },
+
+    {
+      "name": "fasting_glucose_mmol_l",
+      "type": "float",
+      "tier": 2,
+      "required": false,
+      "range": [1.0, 40.0],
+      "unit": "mmol/L",
+      "modifiable": true,
+      "status": "allowed",
+      "sources": { "nhanes": "LBDGLUSI", "diabd": "glucose" },
+      "notes": "NEVER mean-impute (Playbook B7). Absence routes to Tier 1; it does not get a fabricated average. Triggers the red-flag interceptor above 13.9 or below 3.9 (PRD 3.3).",
+      "ui_key": "labs.fasting_glucose"
+    },
+    {
+      "name": "hba1c_percent",
+      "type": "float",
+      "tier": 2,
+      "required": false,
+      "range": [3.0, 20.0],
+      "unit": "%",
+      "modifiable": true,
+      "status": "allowed",
+      "sources": { "nhanes": "LBXGH" },
+      "notes": "NHANES GHB_J has 6,401 rows; the fasting subsample is only 3,036. HbA1c is the wider objective label and should anchor the Tier-2 target.",
+      "ui_key": "labs.hba1c"
+    },
+    {
+      "name": "hdl_mmol_l",
+      "type": "float", "tier": 2, "required": false, "unit": "mmol/L",
+      "modifiable": true, "status": "allowed",
+      "sources": { "nhanes": "LBDHDDSI" },
+      "ui_key": "labs.hdl"
+    },
+    {
+      "name": "triglycerides_mmol_l",
+      "type": "float", "tier": 2, "required": false, "unit": "mmol/L",
+      "modifiable": true, "status": "allowed",
+      "sources": { "nhanes": "LBDTRSI" },
+      "ui_key": "labs.triglycerides"
+    },
+    {
+      "name": "systolic_bp",
+      "type": "integer", "tier": 2, "required": false, "range": [60, 260], "unit": "mmHg",
+      "modifiable": true, "status": "allowed",
+      "sources": { "nhanes": "BPXSY1", "diabd": "systolic BP" },
+      "ui_key": "labs.systolic"
+    },
+    {
+      "name": "diastolic_bp",
+      "type": "integer", "tier": 2, "required": false, "range": [30, 160], "unit": "mmHg",
+      "modifiable": true, "status": "allowed",
+      "sources": { "nhanes": "BPXDI1", "diabd": "diastolic BP" },
+      "ui_key": "labs.diastolic"
+    }
+  ],
+
+  "derived": [
+    {
+      "name": "bmi",
+      "formula": "weight_kg / (height_cm / 100) ** 2",
+      "range": [10.0, 70.0],
+      "notes": "Thresholds are REGIONAL, not global — see packs/*.json. Asian-Pacific uses 23/27.5, not 25/30."
+    },
+    {
+      "name": "waist_to_height_ratio",
+      "formula": "waist_cm / height_cm",
+      "range": [0.2, 1.5],
+      "notes": "⭐ Playbook B9 calls this the highest-leverage single feature. Travels across ethnicities far better than BMI and is trivially measurable at home. Healthy threshold ~0.5 universally. Expect it near the top of the SHAP ranking; if it is not, suspect a bug in the waist pipeline."
+    }
+  ],
+
+  "excluded_for_leakage": {
+    "$comment": "Present in BRFSS, deliberately NOT collected and NOT trained on. Each is a consequence of diabetes or of being inside the healthcare system, and our target user is outside it (Playbook B2).",
+    "CholCheck": "Having had a cholesterol check means you see doctors.",
+    "AnyHealthcare": "Healthcare access, not physiology.",
+    "NoDocbcCost": "Economic access, not physiology.",
+    "HighChol": "Frequently diagnosed at the same visit as the diabetes.",
+    "DiffWalk": "Downstream effect of the disease.",
+    "GenHlth": "Self-rated health — heavily coloured by knowing your diagnosis.",
+    "PhysHlth": "Downstream effect.",
+    "MentHlth": "Downstream effect; also invites a fairness problem.",
+    "HeartDiseaseorAttack": "A complication, not a predictor.",
+    "Stroke": "A complication, not a predictor."
+  },
+
+  "label": {
+    "name": "has_diabetes_or_prediabetes",
+    "type": "binary",
+    "problem": "screening_prevalent",
+    "$comment": [
+      "SCREENING, not prediction (Playbook B1). The question is 'do you already",
+      "have undiagnosed high blood sugar right now', which cross-sectional data",
+      "can actually answer. A 10-year incidence claim needs longitudinal outcome",
+      "data we do not have, and marketing one trained on cross-sectional data is",
+      "both wrong and a regulatory claim we cannot defend."
+    ],
+    "sources": {
+      "brfss": "DIABETE3 in (1,4) → positive; exclude 2 (gestational)",
+      "nhanes": "LBXGH >= 5.7 OR LBDGLUSI >= 5.6 OR DIQ010 == 1",
+      "diabd": "binary label column"
+    },
+    "expected_positive_rate": [0.10, 0.15]
+  },
+
+  "sanity_bounds": {
+    "$comment": "If a trained model lands outside these, stop and hunt the bug. Do not ship, and do not celebrate.",
+    "tier1_auc_roc": [0.78, 0.86],
+    "tier2_auc_roc": [0.85, 0.92],
+    "leakage_alarm_auc": 0.95,
+    "target_sensitivity": 0.85,
+    "min_specificity_at_target_sensitivity": 0.60
+  }
+}

@@ -1,0 +1,140 @@
+{
+  "$comment": [
+    "Bangladesh region pack — Wave 1 launch market.",
+    "",
+    "PRD §1.2: 'If a new country requires a code change, the architecture has",
+    "failed.' Everything region-specific lives in a file like this one: food DB,",
+    "portion units, GI table, risk calibration, cutoffs, units, language, meal",
+    "slots, safety thresholds. Adding a market ships a pack plus a validation",
+    "set — never a retrain, never a branch in application code.",
+    "",
+    "Loaded at runtime by GET /regions/bd/pack (PRD §10)."
+  ],
+  "code": "bd",
+  "country": "Bangladesh",
+  "pack_version": "0.1.0",
+  "updated_at": "2026-08-14",
+
+  "languages": ["bn", "en"],
+  "default_language": "bn",
+  "$language_note": "Bangla is the default when device locale is bn (PRD F13). Both must be complete — no clipped Bangla, no untranslated strings (PRD §18).",
+
+  "units_default": {
+    "weight": "kg",
+    "height": "cm",
+    "waist": "cm",
+    "glucose": "mmol/L",
+    "energy": "kcal",
+    "numerals": "western",
+    "$note": "numerals may be 'bengali' (১২৩) per user preference (PRD F13). Canonical SI is always what gets stored; this is display only."
+  },
+
+  "anthropometric_cutoffs": {
+    "$comment": "Asian-Pacific, NOT Western. Playbook §B9 calls this the single highest-leverage change for real-world accuracy in this population — larger than any hyperparameter sweep.",
+    "bmi": {
+      "underweight": 18.5,
+      "normal_max": 22.9,
+      "overweight": 23.0,
+      "obese": 27.5,
+      "$western_equivalent": "25.0 / 30.0 — do not use here"
+    },
+    "waist_cm": {
+      "male_elevated": 90.0,
+      "female_elevated": 80.0,
+      "$western_equivalent": "102 / 88 — do not use here"
+    },
+    "waist_to_height_ratio": {
+      "healthy_max": 0.5,
+      "$note": "Travels across ethnicities better than BMI. Same threshold everywhere, which is precisely why it is valuable."
+    },
+    "age_risk_onset": 35,
+    "$age_note": "Risk onset is roughly a decade earlier than in Western cohorts. Do not transplant a US age curve."
+  },
+
+  "risk_model": {
+    "clinical_score": "idrs",
+    "$clinical_score_note": "IDRS is the Layer-1 anchor for South Asia — four items, validated in Indian populations, and its waist thresholds are already South-Asian-appropriate.",
+    "core_model_version": null,
+    "calibration_model_version": null,
+    "validation_status": "not_validated",
+    "$validation_status_values": ["validated", "provisional", "not_validated"],
+    "$validation_note": "PRD §7.4b: while this reads 'not_validated', the UI MUST degrade to the transparent clinical score and say so. Never quietly guess. Flips to 'provisional' once DiaBD hold-out metrics exist, and to 'validated' after local clinical validation.",
+    "prevalence_prior": {
+      "value": null,
+      "source": "IDF Diabetes Atlas — country-level adult (20–79) prevalence",
+      "source_verified": false,
+      "$todo": "Fill from the current IDF Atlas edition and record the edition + page. Left null deliberately: a wrong prevalence prior silently miscalibrates every probability shown to every user in this market, and a guessed value is worse than an absent one."
+    },
+    "blend_weight_gbm": 0.65,
+    "$blend_note": "final = w·calibrated_GBM + (1−w)·clinical_score, w tuned on validation (Playbook §B8, typically 0.6–0.75). Placeholder until Stage 2 tunes it."
+  },
+
+  "food": {
+    "food_db_version": null,
+    "gi_table_version": null,
+    "composition_source": "Food Composition Table for Bangladesh (2013), INFS, University of Dhaka",
+    "composition_licence_status": "permission_pending",
+    "$blocker": "Commercial redistribution needs written INFS permission (docs/licensing.md). This blocks the food pack, which blocks food logging entirely.",
+    "portion_units": [
+      { "unit_bn": "কাপ", "unit_en": "cup", "grams_default": null },
+      { "unit_bn": "বাটি", "unit_en": "bowl", "grams_default": null },
+      { "unit_bn": "চামচ", "unit_en": "spoon", "grams_default": null },
+      { "unit_bn": "পিস", "unit_en": "piece", "grams_default": null },
+      { "unit_bn": "টুকরা", "unit_en": "slice", "grams_default": null },
+      { "unit_bn": "হাতা", "unit_en": "ladle", "grams_default": null }
+    ],
+    "$portion_note": "Gram equivalents come from standardised Bangladeshi serving guidelines and are per-food, not global — a বাটি of ভাত is not a বাটি of ডাল. Nulls here are honest placeholders."
+  },
+
+  "meal_slots": [
+    { "key": "breakfast", "name_bn": "সকালের নাশতা", "name_en": "Breakfast", "default_time": "08:00" },
+    { "key": "lunch", "name_bn": "দুপুরের খাবার", "name_en": "Lunch", "default_time": "13:30" },
+    { "key": "snack", "name_bn": "নাশতা", "name_en": "Snack", "default_time": "17:00" },
+    { "key": "dinner", "name_bn": "রাতের খাবার", "name_en": "Dinner", "default_time": "21:00" },
+    { "key": "sehri", "name_bn": "সেহরি", "name_en": "Sehri", "ramadan_only": true },
+    { "key": "iftar", "name_bn": "ইফতার", "name_en": "Iftar", "ramadan_only": true }
+  ],
+
+  "cultural_modes": {
+    "ramadan": {
+      "enabled": true,
+      "calendar": "hijri",
+      "$safety": "Fasting with diabetes carries real risk. Entering Ramadan mode must surface a safety card advising the user to consult their doctor before fasting (PRD F13), and must not present a calorie deficit target during the fast."
+    }
+  },
+
+  "safety_thresholds": {
+    "$comment": "PRD §3.3 red-flag interceptor. These are absolute clinical values, not preferences. A region pack may make them STRICTER, never looser.",
+    "glucose_mmol_l": {
+      "hypoglycaemia": 3.9,
+      "fasting_urgent": 13.9,
+      "random_urgent": 16.7
+    },
+    "min_daily_kcal": { "female": 1200, "male": 1500 },
+    "max_daily_deficit_kcal": 500,
+    "max_weight_loss_kg_per_week": 1.0,
+    "bmi_floor_disable_weight_loss": 18.5,
+    "disordered_eating_kcal_floor": 800,
+    "min_age": 18,
+    "emergency_number": "999",
+    "$emergency_note": "Bangladesh national emergency service. Every market must set this before launch (PRD §18)."
+  },
+
+  "features": {
+    "clinician_mode_enabled": false,
+    "$clinician_note": "Off until F16 ships and the intended-purpose document is reviewed. Bangladesh has no mature SaMD regime for wellness apps, so this is the lowest-friction market to enable it in first — but not before the feature exists.",
+    "camera_food_logging": false,
+    "ai_coach": false,
+    "multi_profile": false,
+    "$feature_note": "All false for the Stage 4 vertical slice. Flags exist now so enabling them later is config, not a release branch."
+  },
+
+  "data_residency_zone": "ap-south",
+  "regulatory": {
+    "regime": "no mature SaMD regime for wellness apps",
+    "gatekeeper": "App Store / Play Store guidelines (PRD §3.1)",
+    "intended_purpose": "consumer_wellness",
+    "risk_wording": "diabetes_risk",
+    "$wording_note": "PRD §3.5: Bangladesh may say 'diabetes risk'. Regulated markets get a different string pack ('metabolic health score') for the same model. Same code, different intended purpose, different words."
+  }
+}
