@@ -1,0 +1,50 @@
+# ── Data: never commit raw or derived health data ──────────────────
+data/raw/*
+data/interim/*
+data/processed/*
+!data/**/.gitkeep
+
+# ── ML artifacts: models are built, not committed ──────────────────
+ml/artifacts/*
+!ml/artifacts/.gitkeep
+*.pkl
+*.joblib
+*.onnx
+mlruns/
+
+# Reports ARE committed (metrics.json, model_card.md are regulatory
+# artefacts per PRD 3.1) — only scratch plots are ignored.
+ml/reports/scratch/
+
+# ── Secrets ────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+kaggle.json
+*.pem
+*.key
+
+# ── Python ─────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── Flutter / Dart ─────────────────────────────────────────────────
+app/.dart_tool/
+app/build/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/ios/Pods/
+app/android/.gradle/
+*.iml
+
+# ── OS / editor ────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

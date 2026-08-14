@@ -1,0 +1,30 @@
+# Stage 0–2: data acquisition, feature engineering, Model A training.
+# Pinned to minor versions — a model card that cites metrics must be
+# reproducible from this file.
+
+# ── acquisition ──────────────────────────────────────────
+requests~=2.32
+
+# ── data ─────────────────────────────────────────────────
+pandas~=2.2
+numpy~=1.26
+pyarrow~=16.1          # parquet for data/interim + data/processed
+xport~=3.6             # SAS XPORT reader fallback (pandas.read_sas covers most)
+
+# ── modelling ────────────────────────────────────────────
+scikit-learn~=1.5
+lightgbm~=4.5
+scipy~=1.13
+
+# ── evaluation / explainability ──────────────────────────
+shap~=0.46             # top-factor explanations for the UI (PRD 7.1)
+matplotlib~=3.9        # calibration curves, reliability diagrams
+
+# ── export ───────────────────────────────────────────────
+onnx~=1.16             # on-device deployment path (Core ML / TFLite via ONNX)
+onnxmltools~=0.12
+skl2onnx~=1.17
+
+# ── quality ──────────────────────────────────────────────
+pytest~=8.2
+ruff~=0.5
