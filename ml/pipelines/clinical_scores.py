@@ -394,21 +394,71 @@ UNVALIDATED_SCORE_REGIONS = {
 
 FALLBACK_SCORE = "findrisc"
 
+# ── ancestry cutoff groups (the diaspora fix) ─────────────────────────
+#
+# Cutoffs were per COUNTRY, which breaks for the population PRD §1.2 Wave 2
+# calls highest-value: a Bangladeshi in London was scored against European
+# thresholds (BMI 25/30, waist 94cm) instead of Asian-Pacific (23/27.5, 90cm),
+# so the app under-detected exactly the diaspora users it was built to serve.
+# UK NICE guidance itself advises lower thresholds for South Asian, Chinese and
+# Black African/Caribbean groups, so the country-level model contradicted local
+# clinical guidance too.
+#
+# THIS IS NOT `ethnicity` AS A MODEL FEATURE. PRD §7.4b forbids that, and
+# rightly. This selects a PUBLISHED CLINICAL THRESHOLD SET at the calibration
+# layer — transparently, and never reaching the gradient booster. It is the
+# same mechanism as choosing a region pack, keyed on the user instead of the
+# border they happen to live inside.
+#
+# Rules that follow:
+#   * user-declared and optional, NEVER inferred from name, language or location
+#   * omitting it must leave the app fully usable (it falls back to the region)
+#   * special-category data under GDPR Art. 9 — explicit consent, and erasable
+ANCESTRY_SCORE = {
+    "south_asian": "idrs",       # derived and validated in this population
+    "east_asian": "findrisc",    # Asian-Pacific cutoffs, no better published option
+    "european": "findrisc",
+    "african": "findrisc",
+    "middle_eastern": "findrisc",
+    "hispanic": "ada",
+}
+
+# Which groups carry Asian-Pacific anthropometric cutoffs (BMI 23/27.5).
+ASIAN_PACIFIC_CUTOFFS = {"south_asian", "east_asian"}
+
+ANCESTRY_LABELS = {
+    "south_asian": "South Asian",
+    "east_asian": "East or Southeast Asian",
+    "european": "European",
+    "african": "African or Caribbean",
+    "middle_eastern": "Middle Eastern or North African",
+    "hispanic": "Hispanic or Latino",
+}
+
 # Cambridge Risk Score is deliberately NOT implemented. It is a logistic model
 # with published coefficients rather than a point table, and implementing it
 # from memory risks shipping wrong numbers into a health product. Add it only
 # from the source paper, with a test against the worked examples in that paper.
 
 
-def score_for_region(s: Subject, region: str, score: str | None = None) -> ScoreResult:
+def score_for_region(s: Subject, region: str, score: str | None = None,
+                     ancestry: str | None = None) -> ScoreResult:
     """Run the clinical score anchoring this market.
 
-    `score` comes from the region pack and wins when supplied; the table is the
-    offline fallback. An unmapped region does not silently inherit a South Asian
-    instrument — it gets the documented fallback plus a caveat on the result.
+    Precedence: ancestry (if declared) > pack-supplied score > region table >
+    documented fallback. A user's population travels with them; the country
+    they live in does not change which thresholds their body needs.
+
+    An unmapped region does not silently inherit a South Asian instrument — it
+    gets the documented fallback plus a caveat on the result.
     """
     code = region.lower()
-    chosen = score or DEFAULT_SCORE_BY_REGION.get(code)
+    ancestry_applied = None
+    if ancestry and ancestry in ANCESTRY_SCORE:
+        chosen = ANCESTRY_SCORE[ancestry]
+        ancestry_applied = ancestry
+    else:
+        chosen = score or DEFAULT_SCORE_BY_REGION.get(code)
 
     unmapped = chosen is None
     if unmapped:
@@ -419,7 +469,14 @@ def score_for_region(s: Subject, region: str, score: str | None = None) -> Score
 
     result = SCORES[chosen](s)
 
-    if unmapped:
+    if ancestry_applied:
+        label = ANCESTRY_LABELS.get(ancestry_applied, ancestry_applied)
+        result.caveats.insert(0, (
+            f"Scored using {label} health guidelines, which you chose, rather than "
+            f"the default for {region.upper()}. These thresholds detect risk earlier "
+            f"in this population."
+        ))
+    elif unmapped:
         result.caveats.insert(0, (
             f"No clinical score is configured for region {region!r}; falling back to "
             f"{result.score}. Treat this as unvalidated for this population."

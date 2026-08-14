@@ -204,6 +204,59 @@ def test_render_produces_aligned_output():
     assert len({len(ln) for ln in box}) == 1, "box drawing rows must be equal width"
 
 
+# -- diaspora cutoffs --------------------------------------------------
+
+def test_a_south_asian_in_the_uk_gets_south_asian_thresholds():
+    """The fix. Without it the app under-detects its highest-value users."""
+    default = P.predict(rec(), region="gb")
+    declared = P.predict(rec(ancestry_cutoff_group="south_asian"), region="gb")
+
+    assert default.clinical_score == "FINDRISC"
+    assert declared.clinical_score == "IDRS"
+    assert declared.probability > default.probability, \
+        "South Asian thresholds must detect this waist earlier"
+
+
+def test_the_override_is_explained_to_the_user():
+    r = P.predict(rec(ancestry_cutoff_group="south_asian"), region="gb")
+    assert any("South Asian health guidelines" in c for c in r.caveats)
+    assert any("which you chose" in c for c in r.caveats)
+
+
+def test_omitting_ancestry_leaves_the_app_fully_usable():
+    """GDPR Art. 9 — the app must work without special-category data."""
+    r = P.predict(rec(), region="gb")
+    assert 0.0 <= r.probability <= 1.0
+    assert r.clinical_score == "FINDRISC"
+
+
+def test_an_unknown_ancestry_value_is_rejected_not_ignored():
+    """A typo must fail loudly. Silently ignoring it would score the user
+    against the wrong population without anyone noticing."""
+    with pytest.raises(ValueError, match="ancestry_cutoff_group"):
+        P.predict(rec(ancestry_cutoff_group="not_a_group"), region="gb")
+
+
+@pytest.mark.parametrize("group,score", [
+    ("south_asian", "IDRS"), ("east_asian", "FINDRISC"),
+    ("european", "FINDRISC"), ("hispanic", "ADA"),
+])
+def test_each_ancestry_group_routes_to_its_instrument(group, score):
+    assert P.predict(rec(ancestry_cutoff_group=group), region="bd").clinical_score == score
+
+
+def test_ancestry_never_becomes_a_model_feature():
+    """PRD 7.4b: raw ethnicity in the GBM is an accuracy AND fairness failure."""
+    assert "ancestry_cutoff_group" not in load_contract().model_inputs(tier=1)
+
+
+def test_ancestry_is_optional_in_the_contract():
+    f = load_contract().by_name("ancestry_cutoff_group")
+    assert f is not None
+    assert not f.required
+    assert f.status == "calibration_only"
+
+
 # -- Tier 2: lab interpretation ---------------------------------------
 
 def test_no_labs_stays_tier_1():

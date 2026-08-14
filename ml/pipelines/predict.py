@@ -222,7 +222,8 @@ def predict(record: dict[str, Any], region: str = "bd", model_tag: str = "v1"
     validation_status = model_cfg["validation_status"]
 
     subject = _subject(record)
-    clinical = score_for_region(subject, region, score=model_cfg.get("clinical_score"))
+    clinical = score_for_region(subject, region, score=model_cfg.get("clinical_score"),
+                                ancestry=record.get("ancestry_cutoff_group"))
 
     factors = [
         Factor(label=i.label, points=i.points,

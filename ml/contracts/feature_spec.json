@@ -176,6 +176,18 @@
     },
 
     {
+      "name": "ancestry_cutoff_group",
+      "type": "categorical",
+      "values": ["south_asian", "east_asian", "european", "african", "middle_eastern", "hispanic"],
+      "tier": 1,
+      "required": false,
+      "modifiable": false,
+      "status": "calibration_only",
+      "sources": { "brfss": "NOT USED", "diabd": "NOT USED", "nhanes": "NOT USED" },
+      "notes": "NOT AN ETHNICITY MODEL FEATURE — PRD 7.4b forbids that. This selects a published clinical threshold set at the CALIBRATION layer, the same mechanism as choosing a region pack but keyed on the user rather than the border they live inside. It never reaches the gradient booster. Fixes the diaspora gap: a Bangladeshi in London was scored against European cutoffs (BMI 25/30, waist 94cm) instead of Asian-Pacific (23/27.5, 90cm), under-detecting exactly the users PRD 1.2 Wave 2 calls highest-value. UK NICE advises the lower thresholds too. MUST be user-declared and optional, NEVER inferred from name, language or location. Special-category data under GDPR Art. 9: explicit consent, and omitting it must leave the app fully usable.",
+      "ui_key": "profile.ancestry"
+    },
+    {
       "name": "known_high_bp",
       "type": "boolean",
       "tier": 1,
