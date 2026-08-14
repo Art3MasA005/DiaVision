@@ -31,9 +31,9 @@
 
   "risk_model": {
     "clinical_score": "ada",
-    "core_model_version": null,
-    "calibration_model_version": null,
-    "validation_status": "not_validated",
+    "core_model_version": "model_a_v1",
+    "calibration_model_version": "isotonic_v1",
+    "validation_status": "provisional",
     "prevalence_prior": {
       "value": null,
       "source": "IDF Diabetes Atlas; cross-check against NHANES-derived prevalence",

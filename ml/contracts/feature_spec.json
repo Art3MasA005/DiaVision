@@ -4,17 +4,51 @@
     "schema, and the Flutter onboarding wizard are all generated from or",
     "validated against this file. Change it and all three change together.",
     "",
-    "STATUS: provisional (v0.1). Fields marked audit_pending are decided by the",
-    "leakage audit in docs/leakage_audit.md, which needs BRFSS. Nothing here is",
-    "frozen until status == 'frozen' and audit_completed_at is set.",
+    "STATUS: FROZEN at v1.0.0, 14 Aug 2026, on the leakage audit below.",
+    "Changing a feature now means a migration, an API version and a wizard",
+    "change together — treat it as a breaking change, not an edit.",
+    "",
+    "Three statuses matter:",
+    "  allowed              collected, and trains the model",
+    "  clinical_score_only  collected and scored by FINDRISC/ADA, but NOT",
+    "                       fed to the gradient booster (see $audit_result)",
+    "  tier 2               lab values; absent means Tier 1, never imputed",
     "",
     "Canonical units are SI and are stored as such (PRD 13.2). Display units are",
     "a per-region presentation concern and never reach this layer."
   ],
-  "version": "0.1.0",
-  "status": "provisional",
-  "audit_completed_at": null,
+  "version": "1.0.0",
+  "status": "frozen",
+  "audit_completed_at": "2026-08-14",
   "created_at": "2026-08-14",
+
+  "$audit_result": [
+    "Leakage audit complete — see docs/leakage_audit.md and",
+    "ml/reports/leakage_audit.json. All three audit_pending features are now",
+    "clinical_score_only: collected from the user and scored by FINDRISC/ADA,",
+    "but EXCLUDED from the gradient booster.",
+    "",
+    "The deciding evidence, on NHANES:",
+    "  with suspects,    all users          AUC 0.9365",
+    "  without suspects, all users          AUC 0.8057",
+    "  with suspects,    never-screened     AUC 0.6032   <-- the target user",
+    "  without suspects, never-screened     AUC 0.7856",
+    "",
+    "The apparently-better model is 0.18 AUC WORSE on people who have never",
+    "been screened, which is precisely who this product is for. Those features",
+    "encode healthcare contact, not physiology."
+  ],
+
+  "$data_availability_finding": [
+    "waist_cm is absent from BOTH BRFSS (all 330 columns checked) and DiaBD.",
+    "Only NHANES carries it. family_history is absent from BRFSS entirely and",
+    "broken in DiaBD (3.2% prevalence, univariate AUC 0.492).",
+    "",
+    "So NHANES is the primary training source despite being the smallest,",
+    "because it is the only one with waist, a working family history, and",
+    "lab-confirmed labels. BRFSS supplies breadth on the features it does have.",
+    "DiaBD is external validation only."
+  ],
 
   "tiers": {
     "1": {
@@ -147,7 +181,7 @@
       "tier": 1,
       "required": true,
       "modifiable": true,
-      "status": "audit_pending",
+      "status": "clinical_score_only",
       "sources": { "brfss": "_RFHYPE5", "diabd": "derive from systolic/diastolic", "nhanes": "BPQ020" },
       "notes": "LEAKAGE SUSPECT (Playbook B2). Hypertension is frequently diagnosed at the same visit as the diabetes, so in BRFSS it partly encodes 'has seen a doctor recently' rather than physiology — and our target user has never seen a doctor. Note it is nonetheless a legitimate FINDRISC/ADA input, so it may survive in the clinical-score layer even if the audit drops it from the GBM. Decide with the with/without AUC delta.",
       "ui_key": "profile.high_bp"
@@ -158,7 +192,7 @@
       "tier": 1,
       "required": true,
       "modifiable": false,
-      "status": "audit_pending",
+      "status": "clinical_score_only",
       "sources": { "brfss": "BPMEDS", "nhanes": "BPQ040A/BPQ050A" },
       "notes": "LEAKAGE SUSPECT for the same reason as known_high_bp, and more strongly — being medicated requires a prescription, which requires a doctor. FINDRISC input.",
       "ui_key": "profile.bp_meds"
@@ -169,7 +203,7 @@
       "tier": 1,
       "required": true,
       "modifiable": false,
-      "status": "audit_pending",
+      "status": "clinical_score_only",
       "sources": { "brfss": "PREDIAB1", "nhanes": "DIQ160" },
       "notes": "STRONGEST LEAKAGE SUSPECT. 'Have you ever been told you have high blood sugar' is close to the label itself for anyone in the healthcare system, and is unanswerable for someone who has never been tested. Expect a large AUC drop when removed — that drop is the point, not a reason to keep it. Carries a 5-point FINDRISC weight, the largest single item there.",
       "ui_key": "profile.high_glucose_history"

@@ -368,6 +368,8 @@ def main() -> int:
                         help="run on generated data to verify the pipeline")
     parser.add_argument("--n", type=int, default=40_000, help="synthetic cohort size")
     parser.add_argument("--region", default="bd")
+    parser.add_argument("--pool", default="brfss",
+                        help="extra corpora to pool with NHANES ('' for NHANES only)")
     args = parser.parse_args()
 
     if args.synthetic:
@@ -383,18 +385,61 @@ def main() -> int:
         run(df.drop(columns=["true_probability"]), args.region, True, "synthetic")
         return 0
 
-    manifest = REPO_ROOT / "data" / "raw" / "MANIFEST.json"
-    have = json.loads(manifest.read_text(encoding="utf-8"))["datasets"] if manifest.exists() else {}
-    missing = [k for k in ("brfss", "diabd") if not have.get(k, {}).get("files")]
-    if missing:
-        print(f"Missing required datasets: {', '.join(missing)}")
-        print("See docs/data_acquisition.md — both need a browser download.")
-        print("\nTo verify the pipeline meanwhile:")
-        print("    python ml/pipelines/train.py --synthetic")
+    from pipelines.load_data import load_all
+
+    data = load_all()
+    if "nhanes" not in data:
+        print("NHANES is required — it is the only source with waist circumference.")
+        print("Run: python ml/scripts/fetch_data.py nhanes")
         return 1
 
-    print("Real-data path not yet implemented — BRFSS/DiaBD loaders land once the files do.")
-    return 1
+    # NHANES is the training corpus despite being the smallest: it is the only
+    # dataset with waist, a working family history, AND lab-confirmed labels.
+    # BRFSS is pooled in for breadth on the features it shares — 431k rows of
+    # age/BMI/activity/smoking is worth having even without waist, and LightGBM
+    # handles the missing column natively rather than needing imputation.
+    train_frames = [data["nhanes"]]
+    if "brfss" in args.pool and "brfss" in data:
+        train_frames.append(data["brfss"])
+    pooled = pd.concat(train_frames, ignore_index=True)
+
+    print(f"\nTraining corpus: {' + '.join(f.iloc[0]['source'] for f in train_frames)}")
+    print(f"  {len(pooled):,} rows · {pooled[LABEL].mean():.2%} positive")
+    print(f"  waist coverage {pooled['waist_cm'].notna().mean():.1%}")
+
+    payload = run(pooled, args.region, False, "v1")
+
+    # ── external validation: one entire dataset never seen in training ────
+    if "diabd" in data:
+        print(f"\n{'=' * 72}")
+        print("EXTERNAL VALIDATION — DiaBD (Bangladesh), never touched in training")
+        print("=" * 72)
+        print("Playbook §B3: holding out one whole dataset is the only number")
+        print("that predicts real-world performance.")
+        payload["external_validation"] = external_validate(data["diabd"], args.region)
+        (REPORTS / "metrics_v1.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return 0
+
+
+def external_validate(df: pd.DataFrame, region: str) -> dict:
+    """Score the shipped bundle against a dataset it has never seen."""
+    import joblib
+
+    bundle = joblib.load(ARTIFACTS / "model_a_v1.joblib")
+    raw = gbm_predict(bundle["gbm"], df, bundle["numeric"], bundle["categorical"])
+    p_gbm = bundle["isotonic_gbm"].predict(raw)
+    p_clin = bundle["isotonic_clinical"].predict(clinical_points(df, region))
+    w = bundle["blend_weight_gbm"]
+    blended = w * p_gbm + (1 - w) * p_clin
+
+    y = df[LABEL].to_numpy()
+    m = ev.evaluate(y, blended, groups={"sex": df["sex_at_birth"].to_numpy()})
+    print(ev.format_report(m, "\nDiaBD (external)"))
+    print("\n  Interpretation: DiaBD lacks waist entirely and its family-history")
+    print("  column is broken, so the model is scoring here on a strict subset of")
+    print("  the features it was trained with. Expect a drop; the question is")
+    print("  whether it still ranks and calibrates usefully.")
+    return m.to_dict()
 
 
 if __name__ == "__main__":

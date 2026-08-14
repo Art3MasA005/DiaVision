@@ -101,7 +101,17 @@ class Contract:
         return cols + [d.name for d in self.derived]
 
     def audit_pending(self) -> list[Feature]:
+        """Features not yet ruled on. Empty once the contract is frozen."""
         return [f for f in self.features if f.status == "audit_pending"]
+
+    def clinical_score_only(self) -> list[Feature]:
+        """Collected and scored by FINDRISC/ADA, but excluded from the model.
+
+        The leakage audit ruled these out of the GBM: they encode healthcare
+        contact rather than physiology, and the model that used them was 0.18
+        AUC WORSE on never-screened users. See docs/leakage_audit.md.
+        """
+        return [f for f in self.features if f.status == "clinical_score_only"]
 
     def by_name(self, name: str) -> Feature | None:
         return next((f for f in self.features if f.name == name), None)

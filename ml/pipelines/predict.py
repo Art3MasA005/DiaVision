@@ -128,7 +128,7 @@ def load_model(tag: str = "synthetic"):
 NON_MODIFIABLE_KEYS = {"age", "family", "sex", "gestational"}
 
 
-def predict(record: dict[str, Any], region: str = "bd", model_tag: str = "synthetic"
+def predict(record: dict[str, Any], region: str = "bd", model_tag: str = "v1"
             ) -> RiskResult:
     """Estimate risk for one person.
 

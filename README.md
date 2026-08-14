@@ -10,11 +10,28 @@ AI-powered diabetes risk and lifestyle companion. Bangladesh-first, built as a l
 
 | Stage | What | Status |
 |---|---|---|
-| **0** | Data acquisition → leakage audit → **freeze `feature_spec.json`** | 🔨 in progress |
-| **1** | FastAPI + Postgres backend, Account/Profile schema, RLS, safety rails | ⏳ |
-| **2** | Model A training + calibration + honest accuracy report | ⏳ |
+| **0** | Data acquisition → leakage audit → **freeze `feature_spec.json`** | ✅ **done** — contract frozen at v1.0.0 |
+| **2** | Model A training + calibration + honest accuracy report | ✅ **done** — AUC 0.810, ECE 0.020 |
+| **1** | FastAPI + Postgres backend, Account/Profile schema, RLS, safety rails | 🔨 next |
 | **3** | Wire model into `/risk/assess`, export ONNX for on-device | ⏳ |
 | **4** | Flutter app — risk-model vertical slice | ⏳ |
+
+Stage 2 landed before Stage 1 because the leakage audit had to settle which features exist before the DB schema could be written against them. It was the right call — the audit removed three fields from the model.
+
+## Model A — current results
+
+| Metric | Value |
+|---|---|
+| AUC-ROC | **0.810** |
+| Sensitivity / specificity at the shipped threshold | **85.1% / 66.9%** |
+| Expected calibration error | **0.020** |
+| External validation (DiaBD, Bangladesh) | 0.639 — market runs clinical-score-only |
+
+Full disclosure in [docs/model_card.md](docs/model_card.md). Two findings worth knowing:
+
+**Waist beats volume.** Neither BRFSS nor DiaBD records waist circumference — only NHANES does. Training on 5,843 NHANES rows (89% waist) beat 437,000 pooled rows (1.2% waist) on the metric that matters: 66.9% vs 52.9% specificity at 85% sensitivity. See [docs/data_audit.md](docs/data_audit.md).
+
+**We rejected a 0.94 AUC model.** Three features would have raised the headline from 0.806 to 0.9365 — and made it *0.18 AUC worse* on users who have never been screened, which is exactly who this product is for. See [docs/leakage_audit.md](docs/leakage_audit.md).
 
 Stage 0 comes first because `feature_spec.json` is the contract that the DB schema, the API, and the onboarding wizard are all built against. Discovering during training that a feature must be dropped for leakage is cheap now and expensive later.
 

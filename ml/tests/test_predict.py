@@ -19,6 +19,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pipelines import predict as P  # noqa: E402
 from pipelines.contract import add_derived, load_contract  # noqa: E402
 
+LEAKAGE_SUSPECTS = {"known_high_bp", "on_bp_meds", "history_high_glucose"}
+
 BASE = dict(
     age_years=44, sex_at_birth="male", height_cm=172.0, weight_kg=82.0,
     waist_cm=102.0, family_history="first_degree", physical_activity="sedentary",
@@ -30,27 +32,26 @@ def rec(**kw):
     return {**BASE, **kw}
 
 
-# ── contract ──────────────────────────────────────────────────────────
+# -- contract ---------------------------------------------------------
 
-def test_contract_loads():
+def test_contract_is_frozen():
     c = load_contract()
-    assert c.version
-    assert c.status in ("provisional", "frozen")
+    assert c.status == "frozen"
+    assert c.version.startswith("1.")
+    assert not c.audit_pending(), "nothing may remain unruled once frozen"
 
 
-def test_leakage_suspects_are_excluded_from_training_by_default():
-    """An unaudited feature that silently trains is how a leaky model ships."""
+def test_leakage_suspects_never_reach_the_model():
+    """The audit ruled all three out of the GBM. See docs/leakage_audit.md."""
     c = load_contract()
-    pending = {f.name for f in c.audit_pending()}
-    assert pending == {"known_high_bp", "on_bp_meds", "history_high_glucose"}
-    assert not (pending & set(c.model_inputs(tier=1)))
+    assert {f.name for f in c.clinical_score_only()} == LEAKAGE_SUSPECTS
+    assert not (LEAKAGE_SUSPECTS & set(c.model_inputs(tier=1)))
 
 
-def test_audit_pending_features_are_still_asked_of_the_user():
-    """They score in FINDRISC/ADA even while held out of the GBM."""
-    c = load_contract()
-    asked = {f.name for f in c.asked_of_user(tier=1)}
-    assert {"known_high_bp", "on_bp_meds", "history_high_glucose"} <= asked
+def test_leakage_suspects_are_still_asked_of_the_user():
+    """They remain legitimate, published FINDRISC/ADA inputs."""
+    asked = {f.name for f in load_contract().asked_of_user(tier=1)}
+    assert LEAKAGE_SUSPECTS <= asked
 
 
 def test_derived_features_are_present_in_model_inputs():
@@ -60,7 +61,7 @@ def test_derived_features_are_present_in_model_inputs():
 
 
 def test_lab_values_never_enter_the_tier1_model():
-    """Playbook §B7 — do not mean-impute a lab a user never took."""
+    """Playbook B7 - do not mean-impute a lab a user never took."""
     cols = load_contract().model_inputs(tier=1)
     for lab in ("fasting_glucose_mmol_l", "hba1c_percent", "hdl_mmol_l"):
         assert lab not in cols
@@ -96,7 +97,7 @@ def test_validation_rejects_bad_records(bad, msg):
     assert any(msg in p for p in problems), problems
 
 
-# ── prediction ────────────────────────────────────────────────────────
+# -- prediction -------------------------------------------------------
 
 def test_predict_returns_a_calibrated_probability():
     r = P.predict(rec(), region="bd")
@@ -104,7 +105,7 @@ def test_predict_returns_a_calibrated_probability():
 
 
 def test_probability_is_never_shown_as_a_bare_point_value():
-    """PRD §5 principle 1 — every number carries a range."""
+    """PRD 5, principle 1 - every number carries a range."""
     r = P.predict(rec(), region="bd")
     assert r.range_low < r.probability < r.range_high
 
@@ -130,7 +131,7 @@ def test_factors_split_modifiable_from_fixed():
 
 
 def test_unvalidated_market_degrades_to_the_clinical_score_and_says_so():
-    """PRD §7.4b — never let a GBM quietly guess on a population it has not seen."""
+    """PRD 7.4b - never let a GBM quietly guess on a population it has not seen."""
     r = P.predict(rec(), region="bd")
     assert r.validation_status == "not_validated"
     assert r.model_version.startswith("clinical_only:")
@@ -142,8 +143,18 @@ def test_unvalidated_market_reports_a_wider_range():
     assert (r.range_high - r.range_low) > 0.10
 
 
+def test_provisional_market_runs_the_model():
+    """The US pack is trained and tested on NHANES, so it earns the GBM path."""
+    if P.load_model("v1") is None:
+        pytest.skip("no trained bundle - run python -m ml.pipelines.train")
+    r = P.predict(rec(), region="us")
+    assert r.validation_status == "provisional"
+    assert r.model_version.startswith("model_a_v1@")
+    assert not any("not yet validated" in c for c in r.caveats)
+
+
 def test_disclaimer_is_always_present():
-    """PRD §3.2 — risk is never shown without it."""
+    """PRD 3.2 - risk is never shown without it."""
     r = P.predict(rec(), region="bd")
     assert "not a diagnosis" in r.disclaimer
 
@@ -187,47 +198,43 @@ def test_band_matches_probability():
 
 def test_render_produces_aligned_output():
     r = P.predict(rec(), region="bd")
-    box = [ln for ln in P.render(r).splitlines() if ln.startswith(("┌", "│", "└"))]
+    box = [ln for ln in P.render(r).splitlines()
+           if ln[:1] in {"┌", "│", "└"}]
+    assert box, "render must draw the result box"
     assert len({len(ln) for ln in box}) == 1, "box drawing rows must be equal width"
 
 
-# ── the model branch (exercised via a temporary validated pack) ────────
+# -- the model branch, via a temporary provisional pack ----------------
 
 @pytest.fixture
 def provisional_pack(tmp_path, monkeypatch):
-    """A pack marked 'provisional' so the GBM path runs.
-
-    No shipped pack is validated yet, so without this the model branch would
-    never be executed by the suite.
-    """
-    real_bd = (P.PACKS / "bd.json").read_text(encoding="utf-8")
-    pack = json.loads(real_bd)
+    """A copy of the BD pack marked 'provisional', so the GBM path runs on it."""
+    pack = json.loads((P.PACKS / "bd.json").read_text(encoding="utf-8"))
     pack["code"] = "zt"
     pack["country"] = "Testland"
     pack["risk_model"]["validation_status"] = "provisional"
 
-    target = tmp_path / "zt.json"
-    target.write_text(json.dumps(pack), encoding="utf-8")
-    # Carry the real packs across too — redirecting the directory otherwise
+    # Carry the real packs across too - redirecting the directory otherwise
     # makes every genuine region unreachable inside these tests.
     for src in P.PACKS.glob("*.json"):
         (tmp_path / src.name).write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+    (tmp_path / "zt.json").write_text(json.dumps(pack), encoding="utf-8")
 
     monkeypatch.setattr(P, "PACKS", tmp_path)
-    return target
+    return tmp_path / "zt.json"
 
 
 def test_model_path_runs_when_a_market_is_validated(provisional_pack):
-    if P.load_model("synthetic") is None:
-        pytest.skip("no trained bundle — run ml/pipelines/train.py --synthetic")
+    if P.load_model("v1") is None:
+        pytest.skip("no trained bundle")
     r = P.predict(rec(), region="zt")
-    assert r.model_version.startswith("model_a_synthetic@")
+    assert r.model_version.startswith("model_a_v1@")
     assert 0.0 <= r.probability <= 1.0
     assert not any("not yet validated" in c for c in r.caveats)
 
 
 def test_validated_market_reports_a_narrower_range(provisional_pack):
-    if P.load_model("synthetic") is None:
+    if P.load_model("v1") is None:
         pytest.skip("no trained bundle")
     narrow = P.predict(rec(), region="zt")
     wide = P.predict(rec(), region="bd")

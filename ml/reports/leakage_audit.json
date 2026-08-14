@@ -1,0 +1,250 @@
+{
+  "generated_at": "2026-08-14T09:02:07.254303+00:00",
+  "results": [
+    {
+      "dataset": "BRFSS",
+      "n": 431858,
+      "positive_rate": 0.13127926309110866,
+      "without_suspects": {
+        "features": [
+          "age_years",
+          "sex_at_birth",
+          "height_cm",
+          "weight_kg",
+          "bmi",
+          "physical_activity",
+          "smoker"
+        ],
+        "auc_roc": 0.7719811798045665,
+        "auc_pr": 0.32678778107866374,
+        "top_importances": [
+          [
+            "weight_kg",
+            2341
+          ],
+          [
+            "bmi",
+            2260
+          ],
+          [
+            "age_years",
+            1569
+          ],
+          [
+            "height_cm",
+            1484
+          ],
+          [
+            "physical_activity",
+            521
+          ],
+          [
+            "smoker",
+            488
+          ],
+          [
+            "sex_at_birth",
+            337
+          ]
+        ]
+      },
+      "with_suspects": {
+        "features": [
+          "age_years",
+          "sex_at_birth",
+          "height_cm",
+          "weight_kg",
+          "bmi",
+          "physical_activity",
+          "smoker",
+          "known_high_bp",
+          "on_bp_meds",
+          "history_high_glucose"
+        ],
+        "auc_roc": 0.8487714644043496,
+        "auc_pr": 0.4289650698430691,
+        "top_importances": [
+          [
+            "bmi",
+            2077
+          ],
+          [
+            "weight_kg",
+            1981
+          ],
+          [
+            "age_years",
+            1564
+          ],
+          [
+            "height_cm",
+            1174
+          ],
+          [
+            "physical_activity",
+            480
+          ],
+          [
+            "smoker",
+            440
+          ],
+          [
+            "history_high_glucose",
+            388
+          ],
+          [
+            "on_bp_meds",
+            321
+          ]
+        ]
+      },
+      "per_feature": {
+        "known_high_bp": {
+          "auc_roc": 0.7983486161330602,
+          "delta": 0.0263674363284937
+        },
+        "on_bp_meds": {
+          "auc_roc": 0.800999551047948,
+          "delta": 0.02901837124338147
+        },
+        "history_high_glucose": {
+          "auc_roc": 0.8240702132774016,
+          "delta": 0.05208903347283511
+        }
+      },
+      "never_screened": null
+    },
+    {
+      "dataset": "NHANES",
+      "n": 5843,
+      "positive_rate": 0.19390723943179874,
+      "without_suspects": {
+        "features": [
+          "age_years",
+          "sex_at_birth",
+          "height_cm",
+          "weight_kg",
+          "waist_cm",
+          "bmi",
+          "waist_to_height_ratio",
+          "family_history",
+          "physical_activity",
+          "smoker"
+        ],
+        "auc_roc": 0.8057481987197562,
+        "auc_pr": 0.45445452653766044,
+        "top_importances": [
+          [
+            "height_cm",
+            1536
+          ],
+          [
+            "waist_cm",
+            1410
+          ],
+          [
+            "waist_to_height_ratio",
+            1360
+          ],
+          [
+            "bmi",
+            1327
+          ],
+          [
+            "weight_kg",
+            1319
+          ],
+          [
+            "age_years",
+            1249
+          ],
+          [
+            "physical_activity",
+            316
+          ],
+          [
+            "family_history",
+            226
+          ]
+        ]
+      },
+      "with_suspects": {
+        "features": [
+          "age_years",
+          "sex_at_birth",
+          "height_cm",
+          "weight_kg",
+          "waist_cm",
+          "bmi",
+          "waist_to_height_ratio",
+          "family_history",
+          "physical_activity",
+          "smoker",
+          "known_high_bp",
+          "on_bp_meds",
+          "history_high_glucose"
+        ],
+        "auc_roc": 0.9364737502024754,
+        "auc_pr": 0.8441324813819261,
+        "top_importances": [
+          [
+            "height_cm",
+            1495
+          ],
+          [
+            "waist_cm",
+            1339
+          ],
+          [
+            "waist_to_height_ratio",
+            1283
+          ],
+          [
+            "age_years",
+            1234
+          ],
+          [
+            "weight_kg",
+            1181
+          ],
+          [
+            "bmi",
+            1124
+          ],
+          [
+            "history_high_glucose",
+            418
+          ],
+          [
+            "physical_activity",
+            313
+          ]
+        ]
+      },
+      "per_feature": {
+        "known_high_bp": {
+          "auc_roc": 0.8138487104573242,
+          "delta": 0.008100511737567984
+        },
+        "on_bp_meds": {
+          "auc_roc": 0.8152630379093749,
+          "delta": 0.009514839189618707
+        },
+        "history_high_glucose": {
+          "auc_roc": 0.934138535098718,
+          "delta": 0.1283903363789618
+        }
+      },
+      "never_screened": {
+        "n": 787,
+        "with_suspects": 0.6031939040207522,
+        "without_suspects": 0.7855869001297017
+      }
+    }
+  ],
+  "decisions": {
+    "known_high_bp": "exclude",
+    "on_bp_meds": "exclude",
+    "history_high_glucose": "exclude"
+  }
+}
