@@ -204,6 +204,91 @@ def test_render_produces_aligned_output():
     assert len({len(ln) for ln in box}) == 1, "box drawing rows must be equal width"
 
 
+# -- Tier 2: lab interpretation ---------------------------------------
+
+def test_no_labs_stays_tier_1():
+    r = P.predict(rec(), region="bd")
+    assert r.tier == 1
+    assert r.lab_findings == []
+    assert r.lab_statement is None
+
+
+@pytest.mark.parametrize("hba1c,band", [
+    (5.2, "normal"), (5.6, "normal"),
+    (5.7, "prediabetes"), (6.4, "prediabetes"),
+    (6.5, "diabetes_range"), (9.0, "diabetes_range"),
+])
+def test_hba1c_bands_follow_published_thresholds(hba1c, band):
+    """ADA Standards of Care: <5.7 normal, 5.7-6.4 prediabetes, >=6.5 diabetes."""
+    r = P.predict(rec(hba1c_percent=hba1c), region="bd")
+    assert r.tier == 2
+    assert r.lab_findings[0].band == band
+
+
+@pytest.mark.parametrize("fpg,band", [
+    (5.0, "normal"), (5.6, "prediabetes"), (6.9, "prediabetes"), (7.0, "diabetes_range"),
+])
+def test_fasting_glucose_bands(fpg, band):
+    r = P.predict(rec(fasting_glucose_mmol_l=fpg), region="bd")
+    assert r.lab_findings[0].band == band
+
+
+def test_hba1c_outranks_fasting_glucose():
+    """HbA1c is the three-month average and covers far more people."""
+    r = P.predict(rec(hba1c_percent=6.1, fasting_glucose_mmol_l=5.2), region="bd")
+    assert r.lab_findings[0].test == "HbA1c"
+    assert "hba1c" in r.basis.lower()
+
+
+def test_a_normal_lab_lowers_the_estimate_below_the_questionnaire():
+    """A measurement beats an estimate, even a pessimistic one."""
+    without = P.predict(rec(), region="bd")
+    with_normal = P.predict(rec(hba1c_percent=5.1), region="bd")
+    assert with_normal.probability < without.probability
+    assert with_normal.band == "low"
+
+
+def test_a_diabetes_range_lab_dominates_the_estimate():
+    r = P.predict(rec(hba1c_percent=8.0), region="bd")
+    assert r.probability >= 0.90
+    assert r.band == "very_high"
+
+
+def test_labs_narrow_the_range():
+    """A measured value carries less uncertainty than a questionnaire."""
+    without = P.predict(rec(), region="bd")
+    with_lab = P.predict(rec(hba1c_percent=6.1), region="bd")
+    assert (with_lab.range_high - with_lab.range_low) < (without.range_high - without.range_low)
+
+
+def test_a_diabetes_range_lab_still_does_not_diagnose():
+    """PRD §2.2 — a single value is not a diagnosis; a repeat test is needed."""
+    r = P.predict(rec(hba1c_percent=9.5), region="bd")
+    text = (r.lab_statement or "").lower()
+    assert "repeat test" in text
+    assert "you have diabetes" not in text
+    assert "not a diagnosis" in r.disclaimer
+
+
+def test_the_result_says_the_estimate_came_from_a_lab_not_the_model():
+    r = P.predict(rec(hba1c_percent=6.1), region="bd")
+    assert any("lab value you entered" in c for c in r.caveats)
+
+
+def test_modifiable_factors_survive_tier_2():
+    """Even with a bad lab result, the user needs something they can act on."""
+    r = P.predict(rec(hba1c_percent=8.0), region="bd")
+    assert r.modifiable_factors
+
+
+def test_labs_are_never_model_features():
+    """Feeding HbA1c to the GBM lifts AUC 0.808 -> 0.939 purely by leakage:
+    the training label is defined as HbA1c >= 6.5."""
+    cols = load_contract().model_inputs(tier=1)
+    assert "hba1c_percent" not in cols
+    assert "fasting_glucose_mmol_l" not in cols
+
+
 # -- the model branch, via a temporary provisional pack ----------------
 
 @pytest.fixture

@@ -51,6 +51,77 @@ BANDS = [
 ]
 
 
+# ── Tier 2: lab interpretation ────────────────────────────────────────
+#
+# Labs are NOT fed to the model. Feeding HbA1c in lifts measured AUC from
+# 0.808 to 0.939, which looks like a triumph and is actually total leakage:
+# the training label is DEFINED as HbA1c >= 6.5, so the model is reading the
+# answer off the feature rather than predicting anything.
+#
+# The deeper point is that a prediction is the wrong tool here. If someone
+# hands you their HbA1c, you do not need to ESTIMATE whether they have high
+# blood sugar — you can read it. That is a lookup against published
+# diagnostic thresholds, and a lookup is more accurate, more explainable and
+# more defensible than any model could be.
+#
+# So Tier 2 is a deterministic interpretation layer. PRD §F2 asks for exactly
+# this: "a clear statement of what the labs already indicate".
+#
+# Thresholds: American Diabetes Association, Standards of Care.
+# NOTE the app still never diagnoses — a diagnosis requires a repeat test on a
+# separate day, which is a doctor's job (PRD §2.2).
+
+LAB_BANDS = {
+    "hba1c_percent": [
+        (0.0, 5.7, "normal", "Your HbA1c is in the normal range."),
+        (5.7, 6.5, "prediabetes", "Your HbA1c is in the prediabetes range."),
+        (6.5, 99.0, "diabetes_range", "Your HbA1c is in the diabetes range."),
+    ],
+    "fasting_glucose_mmol_l": [
+        (0.0, 5.6, "normal", "Your fasting glucose is in the normal range."),
+        (5.6, 7.0, "prediabetes", "Your fasting glucose is in the prediabetes range."),
+        (7.0, 99.0, "diabetes_range", "Your fasting glucose is in the diabetes range."),
+    ],
+}
+
+LAB_LABEL = {
+    "hba1c_percent": ("HbA1c", "%"),
+    "fasting_glucose_mmol_l": ("Fasting glucose", " mmol/L"),
+}
+
+# Ranked by how much a single value tells you. HbA1c wins: it is a three-month
+# average, needs no fasting, and covers 90% of NHANES adults versus 43% for
+# fasting glucose.
+LAB_PRIORITY = ["hba1c_percent", "fasting_glucose_mmol_l"]
+
+
+@dataclass
+class LabFinding:
+    test: str
+    value: float
+    display: str
+    band: str
+    statement: str
+
+
+def interpret_labs(record: dict[str, Any]) -> list[LabFinding]:
+    """Read the user's own lab values against published thresholds."""
+    findings: list[LabFinding] = []
+    for key in LAB_PRIORITY:
+        value = record.get(key)
+        if value is None:
+            continue
+        name, unit = LAB_LABEL[key]
+        for lo, hi, band, statement in LAB_BANDS[key]:
+            if lo <= value < hi:
+                findings.append(LabFinding(
+                    test=name, value=float(value), display=f"{value:g}{unit}",
+                    band=band, statement=statement,
+                ))
+                break
+    return findings
+
+
 @dataclass
 class Factor:
     label: str
@@ -78,6 +149,11 @@ class RiskResult:
     fixed_factors: list[Factor] = field(default_factory=list)
     caveats: list[str] = field(default_factory=list)
     disclaimer: str = DISCLAIMER
+
+    # Tier 2 only. When labs are present these carry the headline, because a
+    # measurement beats an estimate.
+    lab_findings: list[LabFinding] = field(default_factory=list)
+    lab_statement: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -185,10 +261,53 @@ def predict(record: dict[str, Any], region: str = "bd", model_tag: str = "v1"
             *clinical.caveats,
         ]
 
+    # ── Tier 2 ────────────────────────────────────────────────────────
+    # A measured value outranks any estimate. Where the user supplied labs we
+    # report what those labs SAY, and the questionnaire estimate becomes
+    # supporting context rather than the headline.
+    findings = interpret_labs(record)
+    lab_statement = None
+    if findings:
+        tier = 2
+        primary = findings[0]
+        basis = f"your {primary.test.lower()} result of {primary.display}"
+
+        if primary.band == "diabetes_range":
+            probability = max(probability, 0.90)
+            lab_statement = (
+                f"{primary.statement} A diagnosis needs a repeat test on a different "
+                f"day, so please take this result to a doctor rather than treating it "
+                f"as settled."
+            )
+        elif primary.band == "prediabetes":
+            probability = max(probability, 0.45)
+            lab_statement = (
+                f"{primary.statement} This is a warning sign, not a diagnosis, and it "
+                f"is often reversible with diet and activity changes. Worth discussing "
+                f"with a doctor."
+            )
+        else:
+            # A normal lab settles the question this model actually asks —
+            # "do you have high blood sugar RIGHT NOW" — so the band must read
+            # low regardless of how the questionnaire scored. Future risk is a
+            # different question, and one we do not claim to answer.
+            probability = min(probability, 0.05)
+            lab_statement = (
+                f"{primary.statement} Your questionnaire answers still show risk "
+                f"factors worth working on — see below."
+            )
+        caveats.insert(0, (
+            "This estimate is based on a lab value you entered, not on our model. "
+            "Published diagnostic thresholds are used directly, which is why it is "
+            "more reliable than a questionnaire estimate."
+        ))
+
     band, band_label = _band(probability)
-    # Width reflects genuine uncertainty: wider when no local model exists.
-    half = 0.05 if use_model else 0.08
+    # Width reflects genuine uncertainty. A measured lab is far tighter than a
+    # questionnaire, and an unvalidated market is looser than a validated one.
+    half = 0.03 if findings else (0.05 if use_model else 0.08)
     return RiskResult(
+        lab_findings=findings, lab_statement=lab_statement,
         band=band, band_label=band_label,
         probability=round(probability, 4),
         range_low=round(max(0.0, probability - half), 4),
@@ -244,6 +363,11 @@ DEMO = {
 }
 
 
+def _wrap(text: str, width: int) -> list[str]:
+    import textwrap
+    return textwrap.wrap(text, width) or [""]
+
+
 def render(r: RiskResult) -> str:
     width = 60
     pct = f"{r.probability * 100:.0f}%"
@@ -261,8 +385,20 @@ def render(r: RiskResult) -> str:
         row(headline),
         "└" + "─" * width + "┘",
         "",
+    ]
+
+    if r.lab_findings:
+        lines.append("  YOUR LAB RESULTS")
+        for f in r.lab_findings:
+            lines.append(f"    {f.test}: {f.display}   →   {f.band.replace('_', ' ')}")
+        lines.append("")
+        for chunk in _wrap(r.lab_statement or "", width - 2):
+            lines.append(f"  {chunk}")
+        lines.append("")
+
+    lines += [
         f"  Based on: {r.basis}",
-        f"  {r.clinical_score} score: {r.clinical_points}/{r.clinical_max}"
+        f"  Tier {r.tier}   ·   {r.clinical_score} score: {r.clinical_points}/{r.clinical_max}"
         f"   ·   region {r.region.upper()}   ·   {r.validation_status}",
         f"  model: {r.model_version}",
         "",
@@ -333,10 +469,19 @@ def main() -> int:
     g.add_argument("--high-glucose", action="store_true",
                    help="ever told you had high blood glucose")
 
+    lab = parser.add_argument_group(
+        "optional lab values (Tier 2)",
+        "From the user's own lab report. Read against published diagnostic "
+        "thresholds — NOT fed to the model, which would leak.")
+    lab.add_argument("--hba1c", type=float, help="%%, e.g. 6.1 — the most useful single value")
+    lab.add_argument("--fasting-glucose", type=float, help="mmol/L, e.g. 6.4")
+
     args = parser.parse_args()
 
     if args.demo:
         record = dict(DEMO)
+    elif args.age is None and (args.hba1c is not None or args.fasting_glucose is not None):
+        record = dict(DEMO)          # labs on top of the demo person
     else:
         required = {"age": args.age, "sex": args.sex, "height": args.height,
                     "weight": args.weight}
@@ -351,6 +496,11 @@ def main() -> int:
             "smoker": args.smoker, "known_high_bp": args.high_bp,
             "on_bp_meds": args.bp_meds, "history_high_glucose": args.high_glucose,
         }
+
+    if args.hba1c is not None:
+        record["hba1c_percent"] = args.hba1c
+    if args.fasting_glucose is not None:
+        record["fasting_glucose_mmol_l"] = args.fasting_glucose
 
     if args.compare_regions:
         regions = sorted(p.stem for p in PACKS.glob("*.json") if not p.stem.startswith("_"))
