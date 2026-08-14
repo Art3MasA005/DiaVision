@@ -1,0 +1,26 @@
+# Stage 1 — FastAPI + PostgreSQL backend.
+#
+# Postgres, specifically, for one reason above all others: ROW-LEVEL SECURITY.
+# PRD §18 requires profile isolation enforced in the database, not the API
+# layer, with an adversarial cross-profile test. MySQL and SQLite cannot do it.
+
+fastapi~=0.115
+uvicorn[standard]~=0.32
+sqlalchemy~=2.0
+alembic~=1.13
+psycopg[binary]~=3.2          # psycopg 3, not psycopg2
+pydantic-settings~=2.6
+
+# ── auth ─────────────────────────────────────────────────
+python-jose[cryptography]~=3.3
+passlib[bcrypt]~=1.7
+
+# ── the risk model lives in-process ──────────────────────
+# No cross-service hop for /risk/assess: the bundle in ml/artifacts is loaded
+# directly. See ml/requirements.txt for the pinned modelling stack.
+joblib~=1.4
+
+# ── testing ──────────────────────────────────────────────
+pytest~=8.2
+httpx~=0.27                   # FastAPI TestClient transport
+email-validator~=2.2       # pydantic EmailStr
