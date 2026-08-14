@@ -286,20 +286,93 @@ def render(r: RiskResult) -> str:
     return "\n".join(lines)
 
 
+EXAMPLES = """
+examples:
+  # the built-in demo (PRD Persona 1)
+  python ml/pipelines/predict.py --demo
+
+  # your own numbers
+  python ml/pipelines/predict.py --age 52 --sex female --height 155 --weight 68 --waist 94
+
+  # same person, different market -- note the score and cutoffs change
+  python ml/pipelines/predict.py --age 52 --sex female --height 155 --weight 68 --waist 94 --region us
+
+  # every region at once
+  python ml/pipelines/predict.py --demo --compare-regions
+
+  # the exact JSON the API returns
+  python ml/pipelines/predict.py --demo --json
+"""
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--demo", action="store_true")
-    parser.add_argument("--region", default="bd")
+    parser = argparse.ArgumentParser(
+        description=__doc__, epilog=EXAMPLES,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+
+    parser.add_argument("--demo", action="store_true", help="use the built-in example person")
+    parser.add_argument("--region", default="bd", help="region pack (bd, in, us, gb, de, ae)")
     parser.add_argument("--json", action="store_true", help="print the API payload")
+    parser.add_argument("--compare-regions", action="store_true",
+                        help="score the same person in every shipped market")
+
+    g = parser.add_argument_group("the person")
+    g.add_argument("--age", type=int, help="years (18+)")
+    g.add_argument("--sex", choices=["male", "female"], help="sex at birth")
+    g.add_argument("--height", type=float, help="cm")
+    g.add_argument("--weight", type=float, help="kg")
+    g.add_argument("--waist", type=float, help="cm — the single most useful measurement")
+    g.add_argument("--family", default="none",
+                   choices=["none", "second_degree", "first_degree"],
+                   help="family history of diabetes")
+    g.add_argument("--activity", default="sedentary",
+                   choices=["sedentary", "light", "moderate", "active", "very_active"])
+    g.add_argument("--smoker", action="store_true")
+    g.add_argument("--high-bp", action="store_true", help="told you have high blood pressure")
+    g.add_argument("--bp-meds", action="store_true", help="taking blood-pressure medication")
+    g.add_argument("--high-glucose", action="store_true",
+                   help="ever told you had high blood glucose")
+
     args = parser.parse_args()
 
-    result = predict(DEMO, region=args.region)
+    if args.demo:
+        record = dict(DEMO)
+    else:
+        required = {"age": args.age, "sex": args.sex, "height": args.height,
+                    "weight": args.weight}
+        missing = [f"--{k}" for k, v in required.items() if v is None]
+        if missing:
+            parser.error(f"missing {', '.join(missing)} (or pass --demo)")
+        record = {
+            "age_years": args.age, "sex_at_birth": args.sex,
+            "height_cm": args.height, "weight_kg": args.weight,
+            "waist_cm": args.waist,
+            "family_history": args.family, "physical_activity": args.activity,
+            "smoker": args.smoker, "known_high_bp": args.high_bp,
+            "on_bp_meds": args.bp_meds, "history_high_glucose": args.high_glucose,
+        }
+
+    if args.compare_regions:
+        regions = sorted(p.stem for p in PACKS.glob("*.json") if not p.stem.startswith("_"))
+        print(f"\nSame person, every market:\n  {record}\n")
+        print(f"  {'region':8s} {'score':10s} {'points':>8s}  {'risk':>16s}  {'band':12s} status")
+        print("  " + "-" * 74)
+        for code in regions:
+            r = predict(record, region=code)
+            pts = f"{r.clinical_points}/{r.clinical_max}"
+            rng = f"{r.range_low*100:.0f}-{r.range_high*100:.0f}%"
+            print(f"  {code:8s} {r.clinical_score:10s} {pts:>8s}  {rng:>16s}  "
+                  f"{r.band_label:12s} {r.validation_status}")
+        print("\n  Cutoffs and the anchoring instrument are per-market, so the same")
+        print("  body scores differently. That is the point, not a bug.\n")
+        return 0
+
+    result = predict(record, region=args.region)
     if args.json:
         print(json.dumps(result.to_dict(), indent=2))
     else:
         print()
-        print(f"Input: {DEMO}")
+        print(f"Input: {record}")
         print()
         print(render(result))
         print()
