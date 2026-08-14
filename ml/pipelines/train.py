@@ -368,8 +368,13 @@ def main() -> int:
                         help="run on generated data to verify the pipeline")
     parser.add_argument("--n", type=int, default=40_000, help="synthetic cohort size")
     parser.add_argument("--region", default="bd")
-    parser.add_argument("--pool", default="brfss",
-                        help="extra corpora to pool with NHANES ('' for NHANES only)")
+    # Defaults to NHANES alone. Pooling BRFSS adds 431k rows but dilutes waist
+    # coverage from 89% to 1.2%, and the resulting model MISSES the product's
+    # operating point (52.9% vs 66.9% specificity at 85% sensitivity). The
+    # default has to be the model we would actually ship. See docs/data_audit.md.
+    parser.add_argument("--pool", default="none",
+                        help="extra corpora to pool with NHANES, e.g. 'brfss'. "
+                             "Default 'none' — pooling costs more accuracy than it buys.")
     args = parser.parse_args()
 
     if args.synthetic:
