@@ -1,0 +1,509 @@
+{
+  "generated_at": "2026-08-14T02:39:54.654494+00:00",
+  "synthetic": true,
+  "warning": null,
+  "contract_version": "0.1.0",
+  "contract_status": "provisional",
+  "region": "bd",
+  "blend_weight_gbm": 0.8500000000000001,
+  "features": {
+    "numeric": [
+      "age_years",
+      "height_cm",
+      "weight_kg",
+      "waist_cm",
+      "bmi",
+      "waist_to_height_ratio"
+    ],
+    "categorical": [
+      "sex_at_birth",
+      "family_history",
+      "physical_activity",
+      "smoker"
+    ],
+    "held_back_pending_audit": [
+      "known_high_bp",
+      "on_bp_meds",
+      "history_high_glucose"
+    ]
+  },
+  "fold_sizes": {
+    "train": 24000,
+    "cal": 8000,
+    "val": 4000,
+    "test": 4000
+  },
+  "metrics": {
+    "clinical_score_only": {
+      "n": 4000,
+      "n_positive": 941,
+      "positive_rate": 0.2352,
+      "auc_roc": 0.6956,
+      "auc_pr": 0.3827,
+      "brier": 0.1636,
+      "ece": 0.0163,
+      "sensitivity_at_target": 0.9235,
+      "specificity_at_target": 0.2292,
+      "threshold_at_target": 0.1491,
+      "target_sensitivity": 0.85,
+      "reliability": [
+        {
+          "lower": 0.0,
+          "upper": 0.1,
+          "count": 116,
+          "mean_predicted": 0.0154,
+          "observed_rate": 0.0345
+        },
+        {
+          "lower": 0.1,
+          "upper": 0.2,
+          "count": 1531,
+          "mean_predicted": 0.1306,
+          "observed_rate": 0.1208
+        },
+        {
+          "lower": 0.2,
+          "upper": 0.3,
+          "count": 1037,
+          "mean_predicted": 0.207,
+          "observed_rate": 0.2266
+        },
+        {
+          "lower": 0.3,
+          "upper": 0.4,
+          "count": 771,
+          "mean_predicted": 0.3207,
+          "observed_rate": 0.332
+        },
+        {
+          "lower": 0.4,
+          "upper": 0.5,
+          "count": 410,
+          "mean_predicted": 0.4639,
+          "observed_rate": 0.4415
+        },
+        {
+          "lower": 0.6,
+          "upper": 0.7,
+          "count": 114,
+          "mean_predicted": 0.6304,
+          "observed_rate": 0.5789
+        },
+        {
+          "lower": 0.8,
+          "upper": 0.9,
+          "count": 21,
+          "mean_predicted": 0.8485,
+          "observed_rate": 0.6667
+        }
+      ],
+      "subgroups": {},
+      "warnings": [
+        "At 85% sensitivity, specificity is only 22.9% (target >= 60%). The model would send too many healthy users for testing."
+      ]
+    },
+    "gbm_uncalibrated": {
+      "n": 4000,
+      "n_positive": 941,
+      "positive_rate": 0.2352,
+      "auc_roc": 0.7821,
+      "auc_pr": 0.5621,
+      "brier": 0.1785,
+      "ece": 0.1614,
+      "sensitivity_at_target": 0.8502,
+      "specificity_at_target": 0.5237,
+      "threshold_at_target": 0.2972,
+      "target_sensitivity": 0.85,
+      "reliability": [
+        {
+          "lower": 0.0,
+          "upper": 0.1,
+          "count": 591,
+          "mean_predicted": 0.0589,
+          "observed_rate": 0.0525
+        },
+        {
+          "lower": 0.1,
+          "upper": 0.2,
+          "count": 666,
+          "mean_predicted": 0.1471,
+          "observed_rate": 0.0751
+        },
+        {
+          "lower": 0.2,
+          "upper": 0.3,
+          "count": 496,
+          "mean_predicted": 0.2486,
+          "observed_rate": 0.125
+        },
+        {
+          "lower": 0.3,
+          "upper": 0.4,
+          "count": 453,
+          "mean_predicted": 0.3484,
+          "observed_rate": 0.1678
+        },
+        {
+          "lower": 0.4,
+          "upper": 0.5,
+          "count": 412,
+          "mean_predicted": 0.4502,
+          "observed_rate": 0.2403
+        },
+        {
+          "lower": 0.5,
+          "upper": 0.6,
+          "count": 331,
+          "mean_predicted": 0.5475,
+          "observed_rate": 0.2387
+        },
+        {
+          "lower": 0.6,
+          "upper": 0.7,
+          "count": 323,
+          "mean_predicted": 0.6487,
+          "observed_rate": 0.3622
+        },
+        {
+          "lower": 0.7,
+          "upper": 0.8,
+          "count": 323,
+          "mean_predicted": 0.7497,
+          "observed_rate": 0.4644
+        },
+        {
+          "lower": 0.8,
+          "upper": 0.9,
+          "count": 281,
+          "mean_predicted": 0.8494,
+          "observed_rate": 0.6228
+        },
+        {
+          "lower": 0.9,
+          "upper": 1.0,
+          "count": 124,
+          "mean_predicted": 0.9334,
+          "observed_rate": 0.8226
+        }
+      ],
+      "subgroups": {},
+      "warnings": [
+        "At 85% sensitivity, specificity is only 52.4% (target >= 60%). The model would send too many healthy users for testing.",
+        "ECE 0.1614 is high. The displayed percentage would be misleading \u2014 calibration matters more than ranking for this product."
+      ]
+    },
+    "gbm_calibrated": {
+      "n": 4000,
+      "n_positive": 941,
+      "positive_rate": 0.2352,
+      "auc_roc": 0.7822,
+      "auc_pr": 0.5492,
+      "brier": 0.142,
+      "ece": 0.0081,
+      "sensitivity_at_target": 0.8693,
+      "specificity_at_target": 0.4946,
+      "threshold_at_target": 0.1516,
+      "target_sensitivity": 0.85,
+      "reliability": [
+        {
+          "lower": 0.0,
+          "upper": 0.1,
+          "count": 1308,
+          "mean_predicted": 0.0619,
+          "observed_rate": 0.0665
+        },
+        {
+          "lower": 0.1,
+          "upper": 0.2,
+          "count": 842,
+          "mean_predicted": 0.1432,
+          "observed_rate": 0.1449
+        },
+        {
+          "lower": 0.2,
+          "upper": 0.3,
+          "count": 684,
+          "mean_predicted": 0.2396,
+          "observed_rate": 0.2295
+        },
+        {
+          "lower": 0.3,
+          "upper": 0.4,
+          "count": 301,
+          "mean_predicted": 0.3395,
+          "observed_rate": 0.3056
+        },
+        {
+          "lower": 0.4,
+          "upper": 0.5,
+          "count": 367,
+          "mean_predicted": 0.4372,
+          "observed_rate": 0.4414
+        },
+        {
+          "lower": 0.5,
+          "upper": 0.6,
+          "count": 307,
+          "mean_predicted": 0.5656,
+          "observed_rate": 0.5603
+        },
+        {
+          "lower": 0.7,
+          "upper": 0.8,
+          "count": 101,
+          "mean_predicted": 0.7035,
+          "observed_rate": 0.7129
+        },
+        {
+          "lower": 0.8,
+          "upper": 0.9,
+          "count": 70,
+          "mean_predicted": 0.8098,
+          "observed_rate": 0.8429
+        },
+        {
+          "lower": 0.9,
+          "upper": 1.0,
+          "count": 20,
+          "mean_predicted": 0.9768,
+          "observed_rate": 0.9
+        }
+      ],
+      "subgroups": {},
+      "warnings": [
+        "At 85% sensitivity, specificity is only 49.5% (target >= 60%). The model would send too many healthy users for testing."
+      ]
+    },
+    "blended": {
+      "n": 4000,
+      "n_positive": 941,
+      "positive_rate": 0.2352,
+      "auc_roc": 0.7836,
+      "auc_pr": 0.555,
+      "brier": 0.1423,
+      "ece": 0.0165,
+      "sensitivity_at_target": 0.8502,
+      "specificity_at_target": 0.5332,
+      "threshold_at_target": 0.1599,
+      "target_sensitivity": 0.85,
+      "reliability": [
+        {
+          "lower": 0.0,
+          "upper": 0.1,
+          "count": 1193,
+          "mean_predicted": 0.0702,
+          "observed_rate": 0.0679
+        },
+        {
+          "lower": 0.1,
+          "upper": 0.2,
+          "count": 949,
+          "mean_predicted": 0.1468,
+          "observed_rate": 0.1338
+        },
+        {
+          "lower": 0.2,
+          "upper": 0.3,
+          "count": 687,
+          "mean_predicted": 0.2413,
+          "observed_rate": 0.2242
+        },
+        {
+          "lower": 0.3,
+          "upper": 0.4,
+          "count": 403,
+          "mean_predicted": 0.3463,
+          "observed_rate": 0.3226
+        },
+        {
+          "lower": 0.4,
+          "upper": 0.5,
+          "count": 277,
+          "mean_predicted": 0.4365,
+          "observed_rate": 0.4729
+        },
+        {
+          "lower": 0.5,
+          "upper": 0.6,
+          "count": 294,
+          "mean_predicted": 0.536,
+          "observed_rate": 0.5646
+        },
+        {
+          "lower": 0.6,
+          "upper": 0.7,
+          "count": 101,
+          "mean_predicted": 0.6539,
+          "observed_rate": 0.6931
+        },
+        {
+          "lower": 0.7,
+          "upper": 0.8,
+          "count": 70,
+          "mean_predicted": 0.7444,
+          "observed_rate": 0.8429
+        },
+        {
+          "lower": 0.8,
+          "upper": 0.9,
+          "count": 14,
+          "mean_predicted": 0.8491,
+          "observed_rate": 0.8571
+        },
+        {
+          "lower": 0.9,
+          "upper": 1.0,
+          "count": 12,
+          "mean_predicted": 0.9413,
+          "observed_rate": 0.9167
+        }
+      ],
+      "subgroups": {
+        "sex": {
+          "female": {
+            "n": 2036,
+            "positive_rate": 0.2004,
+            "auc_roc": 0.7716,
+            "brier": 0.1319,
+            "ece": 0.0171
+          },
+          "male": {
+            "n": 1964,
+            "positive_rate": 0.2714,
+            "auc_roc": 0.788,
+            "brier": 0.1531,
+            "ece": 0.0197
+          }
+        },
+        "age_band": {
+          "18-29": {
+            "n": 22,
+            "note": "too few to report"
+          },
+          "30-39": {
+            "n": 410,
+            "positive_rate": 0.0683,
+            "auc_roc": 0.7435,
+            "brier": 0.0586,
+            "ece": 0.0354
+          },
+          "40-49": {
+            "n": 954,
+            "positive_rate": 0.1184,
+            "auc_roc": 0.708,
+            "brier": 0.0965,
+            "ece": 0.031
+          },
+          "50-59": {
+            "n": 1115,
+            "positive_rate": 0.2054,
+            "auc_roc": 0.7146,
+            "brier": 0.1443,
+            "ece": 0.0212
+          },
+          "60+": {
+            "n": 1499,
+            "positive_rate": 0.3809,
+            "auc_roc": 0.7434,
+            "brier": 0.1947,
+            "ece": 0.0324
+          }
+        }
+      },
+      "warnings": [
+        "At 85% sensitivity, specificity is only 53.3% (target >= 60%). The model would send too many healthy users for testing."
+      ]
+    },
+    "logistic_baseline": {
+      "n": 4000,
+      "n_positive": 941,
+      "positive_rate": 0.2352,
+      "auc_roc": 0.7944,
+      "auc_pr": 0.5801,
+      "brier": 0.184,
+      "ece": 0.1949,
+      "sensitivity_at_target": 0.8502,
+      "specificity_at_target": 0.5342,
+      "threshold_at_target": 0.3511,
+      "target_sensitivity": 0.85,
+      "reliability": [
+        {
+          "lower": 0.0,
+          "upper": 0.1,
+          "count": 291,
+          "mean_predicted": 0.0686,
+          "observed_rate": 0.0241
+        },
+        {
+          "lower": 0.1,
+          "upper": 0.2,
+          "count": 612,
+          "mean_predicted": 0.1516,
+          "observed_rate": 0.0621
+        },
+        {
+          "lower": 0.2,
+          "upper": 0.3,
+          "count": 614,
+          "mean_predicted": 0.2515,
+          "observed_rate": 0.1042
+        },
+        {
+          "lower": 0.3,
+          "upper": 0.4,
+          "count": 507,
+          "mean_predicted": 0.3493,
+          "observed_rate": 0.1479
+        },
+        {
+          "lower": 0.4,
+          "upper": 0.5,
+          "count": 441,
+          "mean_predicted": 0.4497,
+          "observed_rate": 0.1791
+        },
+        {
+          "lower": 0.5,
+          "upper": 0.6,
+          "count": 429,
+          "mean_predicted": 0.5486,
+          "observed_rate": 0.2564
+        },
+        {
+          "lower": 0.6,
+          "upper": 0.7,
+          "count": 379,
+          "mean_predicted": 0.6482,
+          "observed_rate": 0.3113
+        },
+        {
+          "lower": 0.7,
+          "upper": 0.8,
+          "count": 313,
+          "mean_predicted": 0.7494,
+          "observed_rate": 0.524
+        },
+        {
+          "lower": 0.8,
+          "upper": 0.9,
+          "count": 287,
+          "mean_predicted": 0.8482,
+          "observed_rate": 0.6307
+        },
+        {
+          "lower": 0.9,
+          "upper": 1.0,
+          "count": 127,
+          "mean_predicted": 0.9359,
+          "observed_rate": 0.8268
+        }
+      ],
+      "subgroups": {},
+      "warnings": [
+        "At 85% sensitivity, specificity is only 53.4% (target >= 60%). The model would send too many healthy users for testing.",
+        "ECE 0.1949 is high. The displayed percentage would be misleading \u2014 calibration matters more than ranking for this product."
+      ]
+    }
+  },
+  "WARNING": "SYNTHETIC DATA. These numbers verify the pipeline works. They are NOT accuracy claims and must never appear in a model card or in the app."
+}

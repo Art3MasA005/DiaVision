@@ -12,8 +12,17 @@ pyarrow~=16.1          # parquet for data/interim + data/processed
 xport~=3.6             # SAS XPORT reader fallback (pandas.read_sas covers most)
 
 # ── modelling ────────────────────────────────────────────
-scikit-learn~=1.5
-lightgbm~=4.5
+# Both EXACT pins, not compatible-release. Reasons, in order of severity:
+#
+#   lightgbm 4.7.0 ships a broken Windows wheel — its native library faults
+#   with "access violation reading 0x0" inside LGBM_DatasetSetField on any
+#   Dataset.construct(), including a two-column toy frame. 4.5.0 is clean.
+#   Verified 14 Aug 2026 on Python 3.10.11 / numpy 1.26.4 / Windows 11.
+#
+#   scikit-learn 1.6 renamed force_all_finite, which lightgbm 4.5 still calls;
+#   1.5.2 keeps the stack warning-free and the metrics byte-reproducible.
+scikit-learn==1.5.2
+lightgbm==4.5.0
 scipy~=1.13
 
 # ── evaluation / explainability ──────────────────────────
