@@ -28,8 +28,9 @@ class SignupRequest(BaseModel):
     display_name: str = Field(min_length=1, max_length=120)
     region: str = Field(default="bd", pattern="^[a-z]{2}$")
     locale: str = Field(default="bn", max_length=8)
-    accept_disclaimer: bool = Field(
-        description="PRD §3.2 — the first-launch disclaimer is blocking and must be accepted."
+    accept_terms: bool = Field(
+        description="Terms and Privacy Policy. SEPARATE from the medical disclaimer, "
+                    "which is its own blocking screen afterwards and its own consent record."
     )
 
 
@@ -72,7 +73,41 @@ class AccountOut(BaseModel):
     data_residency_zone: str
     locale: str
     subscription_status: str
-    disclaimer_accepted_at: datetime | None
+
+
+# ── consent ───────────────────────────────────────────────────────────
+
+ConsentKind = Literal["terms", "privacy", "medical_disclaimer", "model_improvement"]
+
+
+class ConsentIn(BaseModel):
+    kind: ConsentKind
+    version: str | None = Field(
+        default=None,
+        description="Omit to accept the current version. Supply one only to record "
+                    "agreement to a specific historical wording.",
+    )
+    locale: str = "en"
+
+
+class ConsentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    kind: str
+    version: str
+    locale: str
+    accepted_at: datetime
+    withdrawn_at: datetime | None
+
+
+class ConsentStatus(BaseModel):
+    """What this account has agreed to, and what is still outstanding."""
+
+    accepted: dict[str, str]
+    outstanding: list[str]
+    current_versions: dict[str, str]
+    may_answer_health_questions: bool
 
 
 # ── health profile ────────────────────────────────────────────────────
@@ -130,6 +165,29 @@ class RiskAssessRequest(BaseModel):
     region: str | None = Field(default=None, pattern="^[a-z]{2}$")
 
 
+class LabFindingOut(BaseModel):
+    test: str
+    value: float
+    display: str
+    band: str
+    statement: str
+
+
+class LabValuesIn(BaseModel):
+    """Optional Tier 2 entry. Both fields optional — at least one required.
+
+    Values are stored as dated observations, not profile attributes, so a
+    stale result is never silently treated as current.
+    """
+
+    profile_id: uuid.UUID
+    hba1c_percent: float | None = Field(default=None, ge=3.0, le=20.0)
+    fasting_glucose_mmol_l: float | None = Field(default=None, ge=1.0, le=40.0)
+    taken_on: datetime | None = Field(
+        default=None, description="When the blood was drawn. Defaults to now."
+    )
+
+
 class RiskResultOut(BaseModel):
     id: uuid.UUID | None = None
     band: str
@@ -150,6 +208,11 @@ class RiskResultOut(BaseModel):
     caveats: list[str]
     disclaimer: str
     taken_at: datetime | None = None
+
+    # Tier 2. Present only when a recent lab value was found; when present
+    # these carry the headline, because a measurement outranks an estimate.
+    lab_findings: list[LabFindingOut] = []
+    lab_statement: str | None = None
 
 
 class RiskHistoryItem(BaseModel):

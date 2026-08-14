@@ -47,7 +47,29 @@ def _signup(client, **overrides) -> dict:
         "display_name": "Test User",
         "region": "bd",
         "locale": "bn",
-        "accept_disclaimer": True,
+        "accept_terms": True,
+    }
+    body.update(overrides)
+    resp = client.post(f"{API}/auth/signup", json=body)
+    assert resp.status_code == 201, resp.text
+    out = {"tokens": resp.json(), "email": body["email"], "password": body["password"]}
+
+    # Terms are accepted at signup; the medical disclaimer is a separate
+    # blocking screen. Most tests need to be past both, so accept it here —
+    # the tests that verify the gate skip this helper.
+    if overrides.pop("_skip_disclaimer", False) is False:
+        client.post(f"{API}/consents", json={"kind": "medical_disclaimer"},
+                    headers=_auth(out["tokens"]))
+    return out
+
+
+def _signup_without_disclaimer(client, **overrides) -> dict:
+    """Terms accepted, medical disclaimer NOT — for testing the gate."""
+    body = {
+        "email": f"u{uuid.uuid4().hex[:12]}@example.com",
+        "password": "correct horse battery staple",
+        "display_name": "Test User", "region": "bd", "locale": "bn",
+        "accept_terms": True,
     }
     body.update(overrides)
     resp = client.post(f"{API}/auth/signup", json=body)
@@ -89,24 +111,83 @@ def test_signup_creates_an_account_and_a_profile(client):
     assert profiles[0]["display_name"] == "Test User"
 
 
-def test_signup_requires_accepting_the_disclaimer(client):
-    """PRD §3.2 — blocking, not a checkbox we can skip."""
+def test_signup_requires_accepting_the_terms(client):
     resp = client.post(f"{API}/auth/signup", json={
         "email": f"u{uuid.uuid4().hex[:12]}@example.com",
         "password": "correct horse battery staple",
-        "display_name": "No Consent", "accept_disclaimer": False,
+        "display_name": "No Consent", "accept_terms": False,
     })
     assert resp.status_code == 400
-    assert "disclaimer" in resp.text.lower()
+    assert "terms" in resp.text.lower()
 
 
 def test_duplicate_email_is_rejected(client):
     user = _signup(client)
     resp = client.post(f"{API}/auth/signup", json={
         "email": user["email"], "password": "another password here",
-        "display_name": "Impostor", "accept_disclaimer": True,
+        "display_name": "Impostor", "accept_terms": True,
     })
     assert resp.status_code == 409
+
+
+# ── consent: two records, not one ─────────────────────────────────────
+
+def test_signup_records_terms_but_not_the_medical_disclaimer(client):
+    """They are separate agreements made at separate moments."""
+    user = _signup_without_disclaimer(client)
+    status = client.get(f"{API}/consents/current", headers=_auth(user["tokens"])).json()
+
+    assert status["accepted"]["terms"] == "1.0"
+    assert "medical_disclaimer" not in status["accepted"]
+    assert "medical_disclaimer" in status["outstanding"]
+    assert status["may_answer_health_questions"] is False
+
+
+def test_health_questions_are_blocked_until_the_disclaimer_is_accepted(client):
+    """PRD §3.2 — enforced server-side, not just by hiding the screen."""
+    user = _signup_without_disclaimer(client)
+    headers = _auth(user["tokens"])
+    profile_id = client.get(f"{API}/profiles", headers=headers).json()[0]["id"]
+
+    resp = client.put(f"{API}/profiles/{profile_id}/health", json=HEALTH, headers=headers)
+    assert resp.status_code == 403
+    assert resp.json()["detail"]["reason"] == "medical_disclaimer_required"
+
+
+def test_risk_is_blocked_until_the_disclaimer_is_accepted(client):
+    user = _signup_without_disclaimer(client)
+    headers = _auth(user["tokens"])
+    profile_id = client.get(f"{API}/profiles", headers=headers).json()[0]["id"]
+
+    resp = client.post(f"{API}/risk/assess", json={"profile_id": profile_id}, headers=headers)
+    assert resp.status_code == 403
+    assert resp.json()["detail"]["reason"] == "medical_disclaimer_required"
+
+
+def test_accepting_the_disclaimer_unblocks_the_health_flow(client):
+    user = _signup_without_disclaimer(client)
+    headers = _auth(user["tokens"])
+
+    accepted = client.post(f"{API}/consents", json={"kind": "medical_disclaimer"},
+                           headers=headers)
+    assert accepted.status_code == 201
+    assert accepted.json()["version"] == "1.0"
+
+    status = client.get(f"{API}/consents/current", headers=headers).json()
+    assert status["may_answer_health_questions"] is True
+    assert status["outstanding"] == []
+
+    profile_id = client.get(f"{API}/profiles", headers=headers).json()[0]["id"]
+    assert client.put(f"{API}/profiles/{profile_id}/health",
+                      json=HEALTH, headers=headers).status_code == 200
+
+
+def test_consent_records_the_version_agreed_to(client):
+    """Answers "which wording did they accept?" — a timestamp alone cannot."""
+    user = _signup(client)
+    rows = client.get(f"{API}/consents/current", headers=_auth(user["tokens"])).json()
+    assert rows["accepted"]["terms"] == rows["current_versions"]["terms"]
+    assert rows["accepted"]["medical_disclaimer"] == "1.0"
 
 
 def test_login_returns_tokens(client):
@@ -306,6 +387,103 @@ def test_mg_dl_units_are_converted_before_screening(client):
         "unit": "mg/dL", "context_tag": "random",
     }, headers=headers)
     assert resp.status_code == 409
+
+
+# ── Tier 2: lab values through the API ────────────────────────────────
+
+def _profile_with_health(client, **overrides):
+    user = _signup(client, **overrides)
+    headers = _auth(user["tokens"])
+    profile_id = client.get(f"{API}/profiles", headers=headers).json()[0]["id"]
+    client.put(f"{API}/profiles/{profile_id}/health", json=HEALTH, headers=headers)
+    return headers, profile_id
+
+
+def test_labs_require_at_least_one_value(client):
+    headers, profile_id = _profile_with_health(client)
+    resp = client.post(f"{API}/labs", json={"profile_id": profile_id}, headers=headers)
+    assert resp.status_code == 400
+
+
+def test_an_hba1c_changes_the_risk_result(client):
+    """Tier 2: a measurement outranks the questionnaire estimate."""
+    headers, profile_id = _profile_with_health(client)
+
+    before = client.post(f"{API}/risk/assess",
+                         json={"profile_id": profile_id}, headers=headers).json()
+    assert before["tier"] == 1
+    assert before["lab_findings"] == []
+
+    added = client.post(f"{API}/labs",
+                        json={"profile_id": profile_id, "hba1c_percent": 6.1},
+                        headers=headers)
+    assert added.status_code == 201
+
+    after = client.post(f"{API}/risk/assess",
+                        json={"profile_id": profile_id}, headers=headers).json()
+    assert after["tier"] == 2
+    assert after["lab_findings"][0]["test"] == "HbA1c"
+    assert after["lab_findings"][0]["band"] == "prediabetes"
+    assert "prediabetes range" in after["lab_statement"]
+    # A measured value carries less uncertainty than a questionnaire.
+    assert (after["range_high"] - after["range_low"]) < (before["range_high"] - before["range_low"])
+
+
+def test_a_normal_hba1c_lowers_the_band(client):
+    headers, profile_id = _profile_with_health(client)
+    client.post(f"{API}/labs", json={"profile_id": profile_id, "hba1c_percent": 5.1},
+                headers=headers)
+    result = client.post(f"{API}/risk/assess",
+                         json={"profile_id": profile_id}, headers=headers).json()
+    assert result["band"] == "low"
+    assert result["lab_findings"][0]["band"] == "normal"
+
+
+def test_a_diabetes_range_hba1c_never_diagnoses(client):
+    """PRD §2.2 — a single value is not a diagnosis."""
+    headers, profile_id = _profile_with_health(client)
+    client.post(f"{API}/labs", json={"profile_id": profile_id, "hba1c_percent": 8.2},
+                headers=headers)
+    result = client.post(f"{API}/risk/assess",
+                         json={"profile_id": profile_id}, headers=headers).json()
+    assert result["probability"] >= 0.90
+    assert "repeat test" in result["lab_statement"].lower()
+    assert "you have diabetes" not in result["lab_statement"].lower()
+
+
+def test_a_dangerous_fasting_glucose_returns_a_safety_card(client):
+    headers, profile_id = _profile_with_health(client)
+    resp = client.post(f"{API}/labs",
+                       json={"profile_id": profile_id, "fasting_glucose_mmol_l": 19.0},
+                       headers=headers)
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["safety_card"]["trigger"] == "hyperglycaemia"
+    assert resp.json()["detail"]["recorded"] is True
+
+
+def test_a_stale_lab_is_ignored_rather_than_aged_in(client):
+    """A three-year-old HbA1c is no evidence about today, not weak evidence."""
+    from datetime import datetime, timedelta, timezone
+
+    headers, profile_id = _profile_with_health(client)
+    old = (datetime.now(timezone.utc) - timedelta(days=800)).isoformat()
+    client.post(f"{API}/labs",
+                json={"profile_id": profile_id, "hba1c_percent": 8.5, "taken_on": old},
+                headers=headers)
+
+    result = client.post(f"{API}/risk/assess",
+                         json={"profile_id": profile_id}, headers=headers).json()
+    assert result["tier"] == 1
+    assert result["lab_findings"] == []
+
+
+def test_labs_are_blocked_before_the_disclaimer(client):
+    user = _signup_without_disclaimer(client)
+    headers = _auth(user["tokens"])
+    profile_id = client.get(f"{API}/profiles", headers=headers).json()[0]["id"]
+    resp = client.post(f"{API}/labs",
+                       json={"profile_id": profile_id, "hba1c_percent": 6.1}, headers=headers)
+    assert resp.status_code == 403
 
 
 # ── regions ───────────────────────────────────────────────────────────

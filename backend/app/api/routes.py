@@ -14,7 +14,7 @@ missing filter here returns nothing rather than someone else's data.
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select, text
@@ -27,8 +27,9 @@ from app.auth import (
 )
 from app.config import get_settings
 from app.db.models import (
-    Account, AccessAuditLog, HealthProfile, Profile, ProfileMembership,
-    RiskAssessment, SafetyEvent, VitalLog,
+    Account, AccessAuditLog, Consent, CONSENT_VERSIONS, HealthProfile,
+    LAB_LOOKBACK_DAYS, Profile, ProfileMembership, RiskAssessment, SafetyEvent,
+    VitalLog,
 )
 from app.db.session import SessionLocal, set_actor
 from app.safety import check_glucose, check_profile
@@ -83,6 +84,56 @@ def resolve_profile(session: Session, profile_id: uuid.UUID) -> Profile:
     return profile
 
 
+def require_medical_disclaimer(session: Session, account_id: uuid.UUID) -> None:
+    """No health question may render before the disclaimer is accepted (PRD §3.2).
+
+    Enforced here as well as in the UI. A client that skips the screen — an old
+    build, a scripted request — must still be refused.
+    """
+    current = CONSENT_VERSIONS["medical_disclaimer"]
+    accepted = session.scalar(
+        select(Consent).where(
+            Consent.account_id == account_id,
+            Consent.kind == "medical_disclaimer",
+            Consent.version == current,
+            Consent.withdrawn_at.is_(None),
+        ).limit(1)
+    )
+    if accepted is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, {
+            "reason": "medical_disclaimer_required",
+            "required_version": current,
+            "message": ("The medical disclaimer must be accepted before any health "
+                        "information is collected or returned."),
+        })
+
+
+def latest_labs(session: Session, profile_id: uuid.UUID) -> dict[str, float]:
+    """Most recent lab values inside the lookback window.
+
+    Outside the window they are ignored entirely rather than aged into the
+    estimate — a three-year-old HbA1c is not weak evidence about today, it is
+    no evidence, and treating it as current would be worse than having none.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(days=LAB_LOOKBACK_DAYS)
+    out: dict[str, float] = {}
+    for vital_type, field in (("hba1c", "hba1c_percent"), ("glucose", "fasting_glucose_mmol_l")):
+        row = session.scalar(
+            select(VitalLog).where(
+                VitalLog.profile_id == profile_id,
+                VitalLog.type == vital_type,
+                VitalLog.recorded_at >= cutoff,
+                # Only a FASTING reading is comparable to the diagnostic
+                # threshold; a random glucose means something different.
+                *([VitalLog.context_tag == "fasting"] if vital_type == "glucose" else []),
+            ).order_by(VitalLog.recorded_at.desc()).limit(1)
+        )
+        if row is not None:
+            value = row.value / 18.0 if row.unit.lower() in ("mg/dl", "mgdl") else row.value
+            out[field] = float(value)
+    return out
+
+
 def audit(session: Session, profile: Profile, actor: uuid.UUID,
           action: str, resource: str, request: Request | None = None) -> None:
     """Record access to a profile the caller does not own (PRD §3.6)."""
@@ -103,10 +154,9 @@ def audit(session: Session, profile: Profile, actor: uuid.UUID,
 @router.post("/auth/signup", response_model=schemas.TokenResponse,
              status_code=status.HTTP_201_CREATED, tags=["auth"])
 def signup(body: schemas.SignupRequest, session: Session = Depends(anonymous_session)):
-    if not body.accept_disclaimer:
-        # PRD §3.2 — blocking, must tap to accept. Not a checkbox we can skip.
+    if not body.accept_terms:
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
-                            "The safety disclaimer must be accepted before an account is created.")
+                            "The Terms and Privacy Policy must be accepted to create an account.")
 
     # Uses the same privileged lookup as login: a plain SELECT here would be
     # filtered to nothing by RLS (no actor yet), so every duplicate would fall
@@ -137,10 +187,17 @@ def signup(body: schemas.SignupRequest, session: Session = Depends(anonymous_ses
         home_region=body.region,
         data_residency_zone=pack["data_residency_zone"],
         locale=body.locale,
-        disclaimer_accepted_at=datetime.now(timezone.utc),
     )
     session.add(account)
     session.flush()
+
+    # Terms only. The medical disclaimer is a separate agreement made on its
+    # own blocking screen, and bundling them here would misrepresent what the
+    # user actually agreed to.
+    session.add(Consent(
+        account_id=account_id, kind="terms",
+        version=CONSENT_VERSIONS["terms"], locale=body.locale,
+    ))
 
     profile = Profile(
         account_id_owner=account.id, claimed_by_account_id=account.id,
@@ -214,6 +271,53 @@ def me(account_id: uuid.UUID = Depends(current_account_id),
     return account
 
 
+# ── consent ───────────────────────────────────────────────────────────
+
+@router.post("/consents", response_model=schemas.ConsentOut,
+             status_code=status.HTTP_201_CREATED, tags=["consent"])
+def record_consent(body: schemas.ConsentIn, request: Request,
+                   account_id: uuid.UUID = Depends(current_account_id),
+                   session: Session = Depends(db_session)):
+    """Record an agreement. Append-only — a re-accept writes a new row."""
+    version = body.version or CONSENT_VERSIONS.get(body.kind, "1.0")
+    ip_hash = None
+    if request.client:
+        import hashlib
+        ip_hash = hashlib.sha256(request.client.host.encode()).hexdigest()[:64]
+
+    row = Consent(account_id=account_id, kind=body.kind, version=version,
+                  locale=body.locale, ip_hash=ip_hash)
+    session.add(row)
+    session.flush()
+    return row
+
+
+@router.get("/consents/current", response_model=schemas.ConsentStatus, tags=["consent"])
+def consent_status(account_id: uuid.UUID = Depends(current_account_id),
+                   session: Session = Depends(db_session)):
+    """What has been agreed, and what still blocks the health flow."""
+    rows = session.scalars(
+        select(Consent).where(
+            Consent.account_id == account_id, Consent.withdrawn_at.is_(None)
+        ).order_by(Consent.accepted_at.desc())
+    ).all()
+
+    accepted: dict[str, str] = {}
+    for row in rows:
+        accepted.setdefault(row.kind, row.version)
+
+    outstanding = [
+        kind for kind, current in CONSENT_VERSIONS.items()
+        if accepted.get(kind) != current
+    ]
+    return schemas.ConsentStatus(
+        accepted=accepted,
+        outstanding=outstanding,
+        current_versions=dict(CONSENT_VERSIONS),
+        may_answer_health_questions="medical_disclaimer" not in outstanding,
+    )
+
+
 # ── profiles ──────────────────────────────────────────────────────────
 
 @router.get("/profiles", response_model=list[schemas.ProfileOut], tags=["profiles"])
@@ -229,6 +333,7 @@ def upsert_health_profile(
     account_id: uuid.UUID = Depends(current_account_id),
     session: Session = Depends(db_session),
 ):
+    require_medical_disclaimer(session, account_id)
     profile = resolve_profile(session, profile_id)
 
     # Profile-level gates run BEFORE any health data is stored (PRD §3.3).
@@ -283,6 +388,7 @@ def assess_risk(
     account_id: uuid.UUID = Depends(current_account_id),
     session: Session = Depends(db_session),
 ):
+    require_medical_disclaimer(session, account_id)
     profile = resolve_profile(session, body.profile_id)
     health = session.get(HealthProfile, profile.id)
     if health is None:
@@ -299,6 +405,9 @@ def assess_risk(
         })
 
     record = risk_service.health_profile_to_record(health)
+    # Tier 2: fold in any recent lab value. These are read against published
+    # thresholds, never fed to the model — see docs/leakage_audit.md.
+    record.update(latest_labs(session, profile.id))
     region = body.region or profile.region_pack
 
     try:
@@ -394,6 +503,69 @@ def add_vital(
             "recorded": True,
         })
     return row
+
+
+@router.post("/labs", response_model=list[schemas.VitalOut],
+             status_code=status.HTTP_201_CREATED, tags=["vitals"])
+def add_labs(
+    body: schemas.LabValuesIn, request: Request,
+    account_id: uuid.UUID = Depends(current_account_id),
+    session: Session = Depends(db_session),
+):
+    """Tier 2 lab entry from the user's own report (PRD §F2).
+
+    Convenience over /vitals: accepts the two values the risk screen asks for
+    in one call, and stores them as dated observations so a stale result is
+    never mistaken for a current one.
+    """
+    require_medical_disclaimer(session, account_id)
+    profile = resolve_profile(session, body.profile_id)
+
+    if body.hba1c_percent is None and body.fasting_glucose_mmol_l is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Provide an HbA1c or a fasting glucose value.")
+
+    recorded_at = body.taken_on or datetime.now(timezone.utc)
+    rows: list[VitalLog] = []
+
+    if body.hba1c_percent is not None:
+        rows.append(VitalLog(profile_id=profile.id, type="hba1c",
+                             value=body.hba1c_percent, unit="%",
+                             recorded_at=recorded_at))
+
+    card = None
+    if body.fasting_glucose_mmol_l is not None:
+        pack = risk_service.region_pack(profile.region_pack)
+        card = check_glucose(body.fasting_glucose_mmol_l, "fasting",
+                             pack.get("safety_thresholds", {}).get("glucose_mmol_l"))
+        rows.append(VitalLog(profile_id=profile.id, type="glucose",
+                             value=body.fasting_glucose_mmol_l, unit="mmol/L",
+                             context_tag="fasting", recorded_at=recorded_at))
+
+    for row in rows:
+        session.add(row)
+
+    if card is not None:
+        session.add(SafetyEvent(
+            profile_id=profile.id, trigger=card.trigger, severity=card.severity.value,
+            source_endpoint="POST /labs",
+            payload_json={"fasting_glucose_mmol_l": body.fasting_glucose_mmol_l},
+        ))
+
+    audit(session, profile, account_id, "write", "labs", request)
+    session.flush()
+
+    if card is not None and card.blocks_response:
+        pack = risk_service.region_pack(profile.region_pack)
+        raise HTTPException(status.HTTP_409_CONFLICT, {
+            "safety_card": {
+                "trigger": card.trigger, "severity": card.severity.value,
+                "title": card.title, "body": card.body, "actions": card.actions,
+                "emergency_number": pack.get("safety_thresholds", {}).get("emergency_number"),
+            },
+            "recorded": True,
+        })
+    return rows
 
 
 # ── regions ───────────────────────────────────────────────────────────

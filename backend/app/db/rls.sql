@@ -54,6 +54,24 @@ CREATE POLICY accounts_self ON accounts
   USING (id = app_current_account())
   WITH CHECK (id = app_current_account());
 
+-- ── consents ─────────────────────────────────────────────────────────
+-- Account-scoped, not profile-scoped, and append-only: a withdrawal writes a
+-- new row rather than editing an old one, so the agreement history survives.
+
+ALTER TABLE consents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE consents FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS consents_read ON consents;
+CREATE POLICY consents_read ON consents FOR SELECT
+  USING (account_id = app_current_account());
+
+DROP POLICY IF EXISTS consents_append ON consents;
+CREATE POLICY consents_append ON consents FOR INSERT
+  WITH CHECK (account_id = app_current_account());
+
+-- No UPDATE or DELETE policy: with FORCE RLS both are denied outright.
+REVOKE UPDATE, DELETE ON consents FROM PUBLIC;
+
 -- ── profile_memberships ──────────────────────────────────────────────
 -- Defined FIRST because everything else depends on it, and it depends on
 -- nothing. Own columns only — no subqueries, so this always terminates.

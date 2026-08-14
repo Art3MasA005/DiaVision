@@ -69,9 +69,6 @@ class Account(Base):
     seat_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     account_type: Mapped[str] = mapped_column(String(16), default="individual", nullable=False)
 
-    # PRD §3.2 — first launch shows a blocking disclaimer that must be accepted.
-    disclaimer_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
     created_at: Mapped[datetime] = _now()
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -85,6 +82,48 @@ class Account(Base):
         CheckConstraint("subscription_status IN ('free','trial','active','past_due','cancelled')",
                         name="ck_subscription_status"),
     )
+
+
+class Consent(Base):
+    """One recorded agreement. Terms and the medical disclaimer are SEPARATE.
+
+    Bundling them was the earlier mistake — a single `disclaimer_accepted_at`
+    column could not answer "which version did they agree to, and when?", and
+    it conflated two agreements a user makes at different moments for different
+    reasons. Terms are accepted at signup; the medical disclaimer is its own
+    blocking screen afterwards (PRD §3.2), and no health question may render
+    before it is recorded.
+
+    Rows are append-only: withdrawing consent writes a new row rather than
+    editing the old one, so the history stays intact.
+    """
+
+    __tablename__ = "consents"
+
+    id: Mapped[uuid.UUID] = _pk()
+    account_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    version: Mapped[str] = mapped_column(String(16), nullable=False)
+    locale: Mapped[str] = mapped_column(String(8), nullable=False, default="en")
+    accepted_at: Mapped[datetime] = _now()
+    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ip_hash: Mapped[str | None] = mapped_column(String(64))
+
+    __table_args__ = (
+        CheckConstraint("kind IN ('terms','privacy','medical_disclaimer','model_improvement')",
+                        name="ck_consent_kind"),
+        Index("ix_consent_account_kind", "account_id", "kind", "accepted_at"),
+    )
+
+
+# Bump when the wording changes. A user who agreed to v1 has NOT agreed to v2,
+# and GET /consents/current is what surfaces that.
+CONSENT_VERSIONS = {
+    "terms": "1.0",
+    "medical_disclaimer": "1.0",
+}
 
 
 class Profile(Base):
@@ -303,6 +342,14 @@ class VitalLog(Base):
                         name="ck_vital_type"),
         Index("ix_vital_profile_time", "profile_id", "type", "recorded_at"),
     )
+
+
+# Lab values live here rather than on HealthProfile, because they are
+# observations with a date, not attributes of a person. A risk assessment reads
+# the most recent one inside this window — an HbA1c from three years ago says
+# nothing useful about today, and silently treating it as current would be
+# worse than having no lab at all.
+LAB_LOOKBACK_DAYS = 365
 
 
 class AccessAuditLog(Base):
