@@ -345,14 +345,54 @@ def ada_risk_test(s: Subject) -> ScoreResult:
 
 SCORES = {"idrs": idrs, "findrisc": findrisc, "ada": ada_risk_test}
 
-# Which published instrument anchors which market. Loaded by the backend from
-# the region pack; duplicated here so the ML side can evaluate the same routing
-# offline. packs/*.json is the source of truth — this is the fallback.
+# Which published instrument anchors which market.
+#
+# packs/*.json is the SOURCE OF TRUTH — the backend reads clinical_score from
+# the region pack. This table exists so the ML side can evaluate the same
+# routing offline, and ml/scripts/validate_packs.py asserts the two agree. A
+# disagreement means the model and the app anchor a market to different
+# instruments, which is why that check is an error rather than a warning.
+#
+# Assignments are by derivation population, not by convenience:
+#   idrs     — South Asian populations, where it was derived and validated,
+#              and whose waist thresholds are already correct for them.
+#   ada      — US/Canada, where it is the familiar public instrument.
+#   findrisc — European-derived; used for Europe, and for Anglophone and Gulf
+#              markets as the least-bad published option.
 DEFAULT_SCORE_BY_REGION = {
+    # South Asia — IDRS is derived and validated here.
     "bd": "idrs", "in": "idrs", "pk": "idrs", "np": "idrs", "lk": "idrs",
+    "bt": "idrs", "mv": "idrs",
+    # North America.
     "us": "ada", "ca": "ada",
-    "gb": "findrisc", "eu": "findrisc", "au": "findrisc",
+    # Europe — FINDRISC's home ground.
+    "gb": "findrisc", "ie": "findrisc", "de": "findrisc", "fr": "findrisc",
+    "it": "findrisc", "es": "findrisc", "nl": "findrisc", "be": "findrisc",
+    "at": "findrisc", "pt": "findrisc", "pl": "findrisc", "se": "findrisc",
+    "dk": "findrisc", "fi": "findrisc", "no": "findrisc", "ch": "findrisc",
+    "eu": "findrisc",
+    # Oceania.
+    "au": "findrisc", "nz": "findrisc",
+    # Gulf / MENA. See the caveat on UNVALIDATED_SCORE_REGIONS below.
+    "ae": "findrisc", "sa": "findrisc", "qa": "findrisc", "kw": "findrisc",
+    "om": "findrisc", "bh": "findrisc", "eg": "findrisc",
+    # Southeast Asia.
+    "my": "findrisc", "id": "findrisc", "sg": "findrisc", "ph": "findrisc",
+    "th": "findrisc", "vn": "findrisc",
 }
+
+# Markets where the assigned score was NOT derived in that population. The
+# assignment is a least-bad default, not a validated choice, and any result
+# carries an explicit caveat saying so. PRD §7.4b: be honest in the UI about
+# validation status rather than quietly guessing — users and regulators both
+# reward it.
+UNVALIDATED_SCORE_REGIONS = {
+    "ae", "sa", "qa", "kw", "om", "bh", "eg",
+    "my", "id", "sg", "ph", "th", "vn",
+    "au", "nz",
+}
+
+FALLBACK_SCORE = "findrisc"
 
 # Cambridge Risk Score is deliberately NOT implemented. It is a logistic model
 # with published coefficients rather than a point table, and implementing it
@@ -360,6 +400,33 @@ DEFAULT_SCORE_BY_REGION = {
 # from the source paper, with a test against the worked examples in that paper.
 
 
-def score_for_region(s: Subject, region: str) -> ScoreResult:
-    """Run the clinical score that anchors this market. Falls back to IDRS."""
-    return SCORES[DEFAULT_SCORE_BY_REGION.get(region.lower(), "idrs")](s)
+def score_for_region(s: Subject, region: str, score: str | None = None) -> ScoreResult:
+    """Run the clinical score anchoring this market.
+
+    `score` comes from the region pack and wins when supplied; the table is the
+    offline fallback. An unmapped region does not silently inherit a South Asian
+    instrument — it gets the documented fallback plus a caveat on the result.
+    """
+    code = region.lower()
+    chosen = score or DEFAULT_SCORE_BY_REGION.get(code)
+
+    unmapped = chosen is None
+    if unmapped:
+        chosen = FALLBACK_SCORE
+
+    if chosen not in SCORES:
+        raise ValueError(f"unknown clinical score {chosen!r}; expected one of {sorted(SCORES)}")
+
+    result = SCORES[chosen](s)
+
+    if unmapped:
+        result.caveats.insert(0, (
+            f"No clinical score is configured for region {region!r}; falling back to "
+            f"{result.score}. Treat this as unvalidated for this population."
+        ))
+    elif code in UNVALIDATED_SCORE_REGIONS:
+        result.caveats.insert(0, (
+            f"{result.score} was not derived in this population. It is the best "
+            f"available published instrument for {region.upper()}, not a validated one."
+        ))
+    return result

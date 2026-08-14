@@ -1,0 +1,94 @@
+{
+  "$comment": "United Kingdom - Wave 4. UKCA regime is broadly MDR-like but outside the EU AI Act stack, so it sits between us.json and de.json in difficulty. Also the largest South Asian diaspora market, which is why the food pack reuses the BD/IN packs rather than starting from McCance alone.",
+  "code": "gb",
+  "country": "United Kingdom",
+  "pack_version": "0.1.0",
+  "updated_at": "2026-08-14",
+  "wave": 4,
+
+  "languages": ["en", "bn", "ur", "hi"],
+  "default_language": "en",
+  "text_direction": "ltr",
+
+  "units_default": {
+    "weight": "kg", "height": "cm", "waist": "cm",
+    "glucose": "mmol/L", "energy": "kcal", "numerals": "western"
+  },
+
+  "anthropometric_cutoffs": {
+    "bmi": { "underweight": 18.5, "normal_max": 24.9, "overweight": 25.0, "obese": 30.0 },
+    "waist_cm": { "male_elevated": 94.0, "female_elevated": 80.0 },
+    "waist_to_height_ratio": { "healthy_max": 0.5 },
+    "age_risk_onset": 40,
+    "$note": "NICE advises LOWER BMI thresholds (23/27.5) for South Asian, Chinese and Black African/Caribbean groups. The single-cutoff-per-country model cannot express that, and this is the clearest case for it. See docs/internationalisation.md - resolving it needs a per-profile cutoff override, not a per-country one."
+  },
+
+  "risk_model": {
+    "clinical_score": "findrisc",
+    "core_model_version": null,
+    "calibration_model_version": null,
+    "validation_status": "not_validated",
+    "prevalence_prior": {
+      "value": null,
+      "source": "IDF Diabetes Atlas; cross-check against UK Biobank",
+      "source_verified": false
+    },
+    "blend_weight_gbm": 0.65,
+    "validation_sets": ["uk_biobank"],
+    "$note": "UK Biobank is the gold standard for INCIDENT diabetes (500k, long follow-up) and is the bootstrap for Model D. Application + fee, separate commercial terms."
+  },
+
+  "food": {
+    "food_db_version": null,
+    "gi_table_version": null,
+    "composition_source": "McCance & Widdowson's Composition of Foods",
+    "composition_licence_status": "not_started",
+    "image_datasets": ["Food-101"],
+    "$note": "Diaspora market: reuse the BD and IN food packs alongside McCance. A Bangladeshi household in Tower Hamlets logs the same meals as one in Dhaka.",
+    "portion_units": [
+      { "unit_en": "cup", "grams_default": null },
+      { "unit_en": "tablespoon", "grams_default": null },
+      { "unit_en": "slice", "grams_default": null },
+      { "unit_en": "piece", "grams_default": null }
+    ]
+  },
+
+  "meal_slots": [
+    { "key": "breakfast", "name_en": "Breakfast", "default_time": "07:30" },
+    { "key": "lunch", "name_en": "Lunch", "default_time": "12:30" },
+    { "key": "snack", "name_en": "Snack", "default_time": "15:30" },
+    { "key": "dinner", "name_en": "Dinner", "default_time": "18:30" }
+  ],
+
+  "cultural_modes": {
+    "ramadan": { "enabled": true, "calendar": "hijri", "$note": "Significant Muslim population; do not treat this as MENA-only." }
+  },
+
+  "safety_thresholds": {
+    "glucose_mmol_l": { "hypoglycaemia": 3.9, "fasting_urgent": 13.9, "random_urgent": 16.7 },
+    "min_daily_kcal": { "female": 1200, "male": 1500 },
+    "max_daily_deficit_kcal": 500,
+    "max_weight_loss_kg_per_week": 1.0,
+    "bmi_floor_disable_weight_loss": 18.5,
+    "disordered_eating_kcal_floor": 800,
+    "min_age": 18,
+    "emergency_number": "999"
+  },
+
+  "features": {
+    "clinician_mode_enabled": false,
+    "camera_food_logging": false,
+    "ai_coach": false,
+    "multi_profile": false
+  },
+
+  "data_residency_zone": "eu-west",
+
+  "regulatory": {
+    "regime": "UKCA marking (MHRA), broadly MDR-like",
+    "gatekeeper": "MHRA + UK GDPR",
+    "intended_purpose": "consumer_wellness",
+    "risk_wording": "metabolic_health_score",
+    "notes": "UK GDPR treats health data as special category, same Art. 9 obligations as the EU. Assess UKCA before Wave 4 ships."
+  }
+}

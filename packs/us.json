@@ -1,0 +1,98 @@
+{
+  "$comment": [
+    "United States - Wave 4. The one market where we already hold lab-confirmed",
+    "training data: NHANES 2017-2018 is downloaded, with HbA1c (6,401) and",
+    "fasting glucose (3,036) as objective labels rather than self-report.",
+    "",
+    "So the US is the natural FIRST market to reach validation_status",
+    "'provisional' - ahead of Bangladesh, whose DiaBD set is still pending."
+  ],
+  "code": "us",
+  "country": "United States",
+  "pack_version": "0.1.0",
+  "updated_at": "2026-08-14",
+  "wave": 4,
+
+  "languages": ["en", "es"],
+  "default_language": "en",
+  "text_direction": "ltr",
+
+  "units_default": {
+    "weight": "lb", "height": "in", "waist": "in",
+    "glucose": "mg/dL", "energy": "kcal", "numerals": "western"
+  },
+
+  "anthropometric_cutoffs": {
+    "bmi": { "underweight": 18.5, "normal_max": 24.9, "overweight": 25.0, "obese": 30.0 },
+    "waist_cm": { "male_elevated": 102.0, "female_elevated": 88.0 },
+    "waist_to_height_ratio": { "healthy_max": 0.5 },
+    "age_risk_onset": 45
+  },
+
+  "risk_model": {
+    "clinical_score": "ada",
+    "core_model_version": null,
+    "calibration_model_version": null,
+    "validation_status": "not_validated",
+    "prevalence_prior": {
+      "value": null,
+      "source": "IDF Diabetes Atlas; cross-check against NHANES-derived prevalence",
+      "source_verified": false
+    },
+    "blend_weight_gbm": 0.65,
+    "validation_sets": ["nhanes", "all_of_us"],
+    "$note": "All of Us is deliberately diverse and is the fairness/bias testing set for every market, not just this one."
+  },
+
+  "food": {
+    "food_db_version": null,
+    "gi_table_version": null,
+    "composition_source": "USDA FoodData Central (free API, US public domain)",
+    "composition_licence_status": "cleared",
+    "image_datasets": ["Food-101", "Nutrition5k"],
+    "$note": "The only market whose composition source is already licence-clear.",
+    "portion_units": [
+      { "unit_en": "cup", "grams_default": null },
+      { "unit_en": "tablespoon", "grams_default": null },
+      { "unit_en": "ounce", "grams_default": null },
+      { "unit_en": "slice", "grams_default": null },
+      { "unit_en": "piece", "grams_default": null }
+    ]
+  },
+
+  "meal_slots": [
+    { "key": "breakfast", "name_en": "Breakfast", "default_time": "07:30" },
+    { "key": "lunch", "name_en": "Lunch", "default_time": "12:30" },
+    { "key": "snack", "name_en": "Snack", "default_time": "15:30" },
+    { "key": "dinner", "name_en": "Dinner", "default_time": "18:30" }
+  ],
+
+  "safety_thresholds": {
+    "glucose_mmol_l": { "hypoglycaemia": 3.9, "fasting_urgent": 13.9, "random_urgent": 16.7 },
+    "min_daily_kcal": { "female": 1200, "male": 1500 },
+    "max_daily_deficit_kcal": 500,
+    "max_weight_loss_kg_per_week": 1.0,
+    "bmi_floor_disable_weight_loss": 18.5,
+    "disordered_eating_kcal_floor": 800,
+    "min_age": 18,
+    "emergency_number": "911"
+  },
+
+  "features": {
+    "clinician_mode_enabled": false,
+    "camera_food_logging": false,
+    "ai_coach": false,
+    "multi_profile": false,
+    "$note": "Clinician mode here makes us a HIPAA Business Associate the moment a clinic pays us - BAA, audit logs, HIPAA-grade infra. Not a flag flip."
+  },
+
+  "data_residency_zone": "us-east",
+
+  "regulatory": {
+    "regime": "FDA General Wellness / CDS guidance (revised Jan 2026, deregulatory direction)",
+    "gatekeeper": "FDA intended-purpose boundary + FTC Health Breach Notification Rule",
+    "intended_purpose": "consumer_wellness",
+    "risk_wording": "diabetes_risk",
+    "notes": "Favourable but conditional: must avoid disease/diagnostic/clinical-management claims. For clinician-facing CDS the FDA expects clear documentation of how the software works - the 'How our AI works' page is a REGULATORY ARTEFACT here, not marketing. State laws stack: California CMIA/CPRA, Washington My Health My Data."
+  }
+}

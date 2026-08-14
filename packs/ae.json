@@ -1,0 +1,109 @@
+{
+  "$comment": [
+    "United Arab Emirates - Wave 3. First RTL market, so this pack is the one",
+    "that proves the layout work. Data residency is a legal requirement here,",
+    "not a preference.",
+    "",
+    "Cutoff caveat: Gulf populations have very high T2D prevalence, but the",
+    "evidence for which anthropometric cutoffs apply is genuinely mixed - they",
+    "are neither clearly Asian-Pacific nor clearly European. Left at Western",
+    "defaults with validation_status 'not_validated', which forces the",
+    "clinical-score fallback. Do not guess this one; it needs local data."
+  ],
+  "code": "ae",
+  "country": "United Arab Emirates",
+  "pack_version": "0.1.0",
+  "updated_at": "2026-08-14",
+  "wave": 3,
+
+  "languages": ["ar", "en", "hi", "ur"],
+  "default_language": "ar",
+  "text_direction": "rtl",
+
+  "units_default": {
+    "weight": "kg", "height": "cm", "waist": "cm",
+    "glucose": "mmol/L", "energy": "kcal", "numerals": "arabic"
+  },
+
+  "anthropometric_cutoffs": {
+    "bmi": { "underweight": 18.5, "normal_max": 24.9, "overweight": 25.0, "obese": 30.0 },
+    "waist_cm": { "male_elevated": 94.0, "female_elevated": 80.0 },
+    "waist_to_height_ratio": { "healthy_max": 0.5 },
+    "age_risk_onset": 40
+  },
+
+  "risk_model": {
+    "clinical_score": "findrisc",
+    "core_model_version": null,
+    "calibration_model_version": null,
+    "validation_status": "not_validated",
+    "prevalence_prior": {
+      "value": null,
+      "source": "IDF Diabetes Atlas - MENA region has among the highest prevalence globally",
+      "source_verified": false
+    },
+    "blend_weight_gbm": 0.65,
+    "validation_sets": [],
+    "$note": "No local validation set identified. Until one exists this market must run clinical-score-only, per PRD 7.4b."
+  },
+
+  "food": {
+    "food_db_version": null,
+    "gi_table_version": null,
+    "composition_source": "FAO/INFOODS regional tables - expect to build our own",
+    "composition_licence_status": "not_started",
+    "image_datasets": [],
+    "$note": "MENA image data is the thinnest of any wave. Cheapest path per PRD 17.4c: Open Food Facts for packaged goods + regional table for staples + VLM fallback, then let user corrections build the dataset.",
+    "portion_units": [
+      { "unit_local": "كوب", "unit_en": "cup", "grams_default": null },
+      { "unit_local": "ملعقة", "unit_en": "spoon", "grams_default": null },
+      { "unit_local": "قطعة", "unit_en": "piece", "grams_default": null },
+      { "unit_local": "رغيف", "unit_en": "loaf", "grams_default": null }
+    ]
+  },
+
+  "meal_slots": [
+    { "key": "breakfast", "name_local": "الفطور", "name_en": "Breakfast", "default_time": "08:00" },
+    { "key": "lunch", "name_local": "الغداء", "name_en": "Lunch", "default_time": "14:00" },
+    { "key": "snack", "name_local": "وجبة خفيفة", "name_en": "Snack", "default_time": "17:00" },
+    { "key": "dinner", "name_local": "العشاء", "name_en": "Dinner", "default_time": "21:00" },
+    { "key": "suhoor", "name_local": "السحور", "name_en": "Suhoor", "seasonal_only": true },
+    { "key": "iftar", "name_local": "الإفطار", "name_en": "Iftar", "seasonal_only": true }
+  ],
+
+  "cultural_modes": {
+    "ramadan": {
+      "enabled": true,
+      "calendar": "hijri",
+      "$safety": "Highest-usage market for this mode. Safety card is mandatory, not optional."
+    }
+  },
+
+  "safety_thresholds": {
+    "glucose_mmol_l": { "hypoglycaemia": 3.9, "fasting_urgent": 13.9, "random_urgent": 16.7 },
+    "min_daily_kcal": { "female": 1200, "male": 1500 },
+    "max_daily_deficit_kcal": 500,
+    "max_weight_loss_kg_per_week": 1.0,
+    "bmi_floor_disable_weight_loss": 18.5,
+    "disordered_eating_kcal_floor": 800,
+    "min_age": 18,
+    "emergency_number": "998"
+  },
+
+  "features": {
+    "clinician_mode_enabled": false,
+    "camera_food_logging": false,
+    "ai_coach": false,
+    "multi_profile": false
+  },
+
+  "data_residency_zone": "me-central",
+
+  "regulatory": {
+    "regime": "UAE MOHAP registration for health apps; UAE data protection law",
+    "gatekeeper": "MOHAP + store guidelines",
+    "intended_purpose": "consumer_wellness",
+    "risk_wording": "diabetes_risk",
+    "notes": "Data residency may be legally required (Saudi PDPL is stricter still). me-central is not optional here."
+  }
+}

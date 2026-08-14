@@ -1,0 +1,94 @@
+{
+  "$comment": "India - Wave 2. Shares Asian-Pacific cutoffs and IDRS with Bangladesh; food pack reuse from BD is roughly 60%. DPDP Act 2023 governs the data.",
+  "code": "in",
+  "country": "India",
+  "pack_version": "0.1.0",
+  "updated_at": "2026-08-14",
+  "wave": 2,
+
+  "languages": ["hi", "en", "bn", "ta", "te", "mr"],
+  "default_language": "hi",
+  "text_direction": "ltr",
+
+  "units_default": {
+    "weight": "kg", "height": "cm", "waist": "cm",
+    "glucose": "mg/dL", "energy": "kcal", "numerals": "western"
+  },
+
+  "anthropometric_cutoffs": {
+    "bmi": { "underweight": 18.5, "normal_max": 22.9, "overweight": 23.0, "obese": 27.5 },
+    "waist_cm": { "male_elevated": 90.0, "female_elevated": 80.0 },
+    "waist_to_height_ratio": { "healthy_max": 0.5 },
+    "age_risk_onset": 35
+  },
+
+  "risk_model": {
+    "clinical_score": "idrs",
+    "core_model_version": null,
+    "calibration_model_version": null,
+    "validation_status": "not_validated",
+    "prevalence_prior": {
+      "value": null,
+      "source": "IDF Diabetes Atlas; cross-check against ICMR-INDIAB",
+      "source_verified": false
+    },
+    "blend_weight_gbm": 0.65,
+    "validation_sets": ["icmr_indiab"],
+    "$note": "IDRS was derived and validated in exactly this population - the strongest clinical-score fit of any market."
+  },
+
+  "food": {
+    "food_db_version": null,
+    "gi_table_version": null,
+    "composition_source": "IFCT 2017, National Institute of Nutrition, Hyderabad",
+    "composition_licence_status": "not_started",
+    "image_datasets": ["Indian Food Images (Kaggle)", "Food-101 subset"],
+    "portion_units": [
+      { "unit_local": "कटोरी", "unit_en": "katori", "grams_default": null },
+      { "unit_local": "कप", "unit_en": "cup", "grams_default": null },
+      { "unit_local": "चम्मच", "unit_en": "spoon", "grams_default": null },
+      { "unit_local": "टुकड़ा", "unit_en": "piece", "grams_default": null },
+      { "unit_local": "रोटी", "unit_en": "roti", "grams_default": null }
+    ]
+  },
+
+  "meal_slots": [
+    { "key": "breakfast", "name_local": "नाश्ता", "name_en": "Breakfast", "default_time": "08:30" },
+    { "key": "lunch", "name_local": "दोपहर का खाना", "name_en": "Lunch", "default_time": "13:30" },
+    { "key": "snack", "name_local": "शाम का नाश्ता", "name_en": "Snack", "default_time": "17:30" },
+    { "key": "dinner", "name_local": "रात का खाना", "name_en": "Dinner", "default_time": "21:00" }
+  ],
+
+  "cultural_modes": {
+    "navratri": { "enabled": true, "$safety": "Fasting period. Same doctor-consult safety card as Ramadan." },
+    "ramadan": { "enabled": true, "calendar": "hijri" }
+  },
+
+  "safety_thresholds": {
+    "glucose_mmol_l": { "hypoglycaemia": 3.9, "fasting_urgent": 13.9, "random_urgent": 16.7 },
+    "min_daily_kcal": { "female": 1200, "male": 1500 },
+    "max_daily_deficit_kcal": 500,
+    "max_weight_loss_kg_per_week": 1.0,
+    "bmi_floor_disable_weight_loss": 18.5,
+    "disordered_eating_kcal_floor": 800,
+    "min_age": 18,
+    "emergency_number": "112"
+  },
+
+  "features": {
+    "clinician_mode_enabled": false,
+    "camera_food_logging": false,
+    "ai_coach": false,
+    "multi_profile": false
+  },
+
+  "data_residency_zone": "ap-south",
+
+  "regulatory": {
+    "regime": "CDSCO SaMD rules evolving; DPDP Act 2023 governs the data",
+    "gatekeeper": "Store guidelines + DPDP consent manager",
+    "intended_purpose": "consumer_wellness",
+    "risk_wording": "diabetes_risk",
+    "notes": "DPDP requires a consent manager and data-principal rights. Local processing expectations - keep in ap-south."
+  }
+}

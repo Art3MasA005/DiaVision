@@ -1,0 +1,109 @@
+{
+  "$comment": [
+    "Germany - Wave 5, and the architectural stress test for the whole pack",
+    "system. The EU is the hardest market and this pack is what proves the",
+    "design survives it WITHOUT a code change:",
+    "",
+    "  risk_wording        -> 'metabolic_health_score', not 'diabetes_risk'",
+    "  intended_purpose    -> consumer_wellness, stated formally",
+    "  clinician_mode      -> false, and validate_packs.py FORBIDS true here",
+    "",
+    "Why: MDR Annex VIII Rule 11 makes software intended for diagnosis,",
+    "prevention, monitoring, PREDICTION, prognosis or treatment a medical",
+    "device, and pushes most of it to Class IIa+ - Notified Body, ISO 13485,",
+    "IEC 62304, clinical evaluation. The 2025 revision of MDCG 2019-11 brought",
+    "prognosis/prediction software more explicitly into scope. Worse, Class IIa+",
+    "devices embedding AI are generally high-risk under the EU AI Act, so the",
+    "two regimes stack.",
+    "",
+    "Same model, different words, different intended purpose. That is the whole",
+    "point of separating the pack from the code."
+  ],
+  "code": "de",
+  "country": "Germany",
+  "pack_version": "0.1.0",
+  "updated_at": "2026-08-14",
+  "wave": 5,
+
+  "languages": ["de", "en", "tr"],
+  "default_language": "de",
+  "text_direction": "ltr",
+
+  "units_default": {
+    "weight": "kg", "height": "cm", "waist": "cm",
+    "glucose": "mg/dL", "energy": "kcal", "numerals": "western",
+    "$note": "Germany commonly uses mg/dL despite being metric elsewhere. Also expect ~35% string expansion vs English - no fixed-height buttons (PRD 13.2)."
+  },
+
+  "anthropometric_cutoffs": {
+    "bmi": { "underweight": 18.5, "normal_max": 24.9, "overweight": 25.0, "obese": 30.0 },
+    "waist_cm": { "male_elevated": 94.0, "female_elevated": 80.0 },
+    "waist_to_height_ratio": { "healthy_max": 0.5 },
+    "age_risk_onset": 45
+  },
+
+  "risk_model": {
+    "clinical_score": "findrisc",
+    "core_model_version": null,
+    "calibration_model_version": null,
+    "validation_status": "not_validated",
+    "prevalence_prior": {
+      "value": null,
+      "source": "IDF Diabetes Atlas",
+      "source_verified": false
+    },
+    "blend_weight_gbm": 0.65,
+    "validation_sets": [],
+    "$note": "FINDRISC is European-derived and widely used in Germany, which helps the defensibility argument. But note it reports 10-year INCIDENCE - and a prediction claim is precisely what Rule 11 catches. The consumer-mode wording must stay on current metabolic health, not future prediction."
+  },
+
+  "food": {
+    "food_db_version": null,
+    "gi_table_version": null,
+    "composition_source": "Bundeslebensmittelschlüssel (BLS) / CIQUAL fallback",
+    "composition_licence_status": "not_started",
+    "image_datasets": ["Food-101"],
+    "portion_units": [
+      { "unit_local": "Tasse", "unit_en": "cup", "grams_default": null },
+      { "unit_local": "Esslöffel", "unit_en": "tablespoon", "grams_default": null },
+      { "unit_local": "Scheibe", "unit_en": "slice", "grams_default": null },
+      { "unit_local": "Stück", "unit_en": "piece", "grams_default": null }
+    ]
+  },
+
+  "meal_slots": [
+    { "key": "breakfast", "name_local": "Frühstück", "name_en": "Breakfast", "default_time": "07:30" },
+    { "key": "lunch", "name_local": "Mittagessen", "name_en": "Lunch", "default_time": "12:30" },
+    { "key": "snack", "name_local": "Zwischenmahlzeit", "name_en": "Snack", "default_time": "15:30" },
+    { "key": "dinner", "name_local": "Abendessen", "name_en": "Dinner", "default_time": "19:00" }
+  ],
+
+  "safety_thresholds": {
+    "glucose_mmol_l": { "hypoglycaemia": 3.9, "fasting_urgent": 13.9, "random_urgent": 16.7 },
+    "min_daily_kcal": { "female": 1200, "male": 1500 },
+    "max_daily_deficit_kcal": 500,
+    "max_weight_loss_kg_per_week": 1.0,
+    "bmi_floor_disable_weight_loss": 18.5,
+    "disordered_eating_kcal_floor": 800,
+    "min_age": 18,
+    "emergency_number": "112"
+  },
+
+  "features": {
+    "clinician_mode_enabled": false,
+    "camera_food_logging": false,
+    "ai_coach": false,
+    "multi_profile": false,
+    "$hard_rule": "clinician_mode_enabled MUST remain false in every EU pack without a Notified Body engagement. Enforced in validate_packs.py, not left to reviewer diligence."
+  },
+
+  "data_residency_zone": "eu-west",
+
+  "regulatory": {
+    "regime": "EU MDR Annex VIII Rule 11 + EU AI Act",
+    "gatekeeper": "Notified Body (if device), GDPR Art. 9 for health data",
+    "intended_purpose": "consumer_wellness",
+    "risk_wording": "metabolic_health_score",
+    "notes": "Health data is special category under GDPR Art. 9: explicit consent, DPIA MANDATORY, EU residency, appointed representative, right to erasure, 72-hour breach notification. A Class IIa CE marking project is typically 12-24 months and six figures - treat the EU as a funded, scheduled programme, not a v1 checkbox. A Dec 2025 Commission proposal to amend Rule 11 is in progress but unsettled; do not plan on it landing."
+  }
+}

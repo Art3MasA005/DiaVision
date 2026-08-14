@@ -28,3 +28,4 @@ skl2onnx~=1.17
 # ── quality ──────────────────────────────────────────────
 pytest~=8.2
 ruff~=0.5
+jsonschema~=4.23      # region pack validation (ml/scripts/validate_packs.py)

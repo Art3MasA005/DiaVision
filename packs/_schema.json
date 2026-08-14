@@ -1,0 +1,224 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://byebyediabetes.app/schemas/region-pack-1.json",
+  "title": "Region Pack",
+  "description": "The internationalisation unit. PRD 1.2: 'If a new country requires a code change, the architecture has failed.' Adding a market ships one of these plus a validation set - never a retrain, never a branch in application code. Validated in CI by ml/scripts/validate_packs.py; a pack that fails must not be servable by GET /regions/{code}/pack.",
+  "type": "object",
+  "required": [
+    "code", "country", "pack_version", "languages", "default_language",
+    "units_default", "anthropometric_cutoffs", "risk_model", "meal_slots",
+    "safety_thresholds", "features", "data_residency_zone", "regulatory"
+  ],
+
+  "properties": {
+    "code": {
+      "type": "string",
+      "pattern": "^[a-z]{2}$",
+      "description": "ISO 3166-1 alpha-2, lowercase. Must equal the filename stem."
+    },
+    "country": { "type": "string", "minLength": 2 },
+    "pack_version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "updated_at": { "type": "string", "format": "date" },
+
+    "languages": {
+      "type": "array", "minItems": 1,
+      "items": { "type": "string", "pattern": "^[a-z]{2}(-[A-Z]{2})?$" }
+    },
+    "default_language": { "type": "string" },
+    "text_direction": { "enum": ["ltr", "rtl"], "default": "ltr" },
+
+    "units_default": {
+      "type": "object",
+      "required": ["weight", "height", "waist", "glucose", "energy"],
+      "properties": {
+        "weight": { "enum": ["kg", "lb"] },
+        "height": { "enum": ["cm", "in"] },
+        "waist": { "enum": ["cm", "in"] },
+        "glucose": { "enum": ["mmol/L", "mg/dL"] },
+        "energy": { "enum": ["kcal", "kJ"] },
+        "numerals": { "enum": ["western", "bengali", "arabic", "devanagari"], "default": "western" }
+      }
+    },
+
+    "anthropometric_cutoffs": {
+      "description": "Population-specific. Playbook B9: using Western cutoffs in South Asia is the single largest source of real-world error, larger than any hyperparameter sweep.",
+      "type": "object",
+      "required": ["bmi", "waist_cm", "waist_to_height_ratio", "age_risk_onset"],
+      "properties": {
+        "bmi": {
+          "type": "object",
+          "required": ["underweight", "overweight", "obese"],
+          "properties": {
+            "underweight": { "type": "number", "minimum": 15, "maximum": 20 },
+            "normal_max": { "type": "number" },
+            "overweight": { "type": "number", "minimum": 21, "maximum": 27 },
+            "obese": { "type": "number", "minimum": 25, "maximum": 35 }
+          }
+        },
+        "waist_cm": {
+          "type": "object",
+          "required": ["male_elevated", "female_elevated"],
+          "properties": {
+            "male_elevated": { "type": "number", "minimum": 75, "maximum": 110 },
+            "female_elevated": { "type": "number", "minimum": 65, "maximum": 100 }
+          }
+        },
+        "waist_to_height_ratio": {
+          "type": "object",
+          "required": ["healthy_max"],
+          "properties": {
+            "healthy_max": {
+              "type": "number", "minimum": 0.4, "maximum": 0.6,
+              "description": "~0.5 in every population studied. Travels across ethnicities far better than BMI, which is exactly why it is valuable."
+            }
+          }
+        },
+        "age_risk_onset": { "type": "integer", "minimum": 20, "maximum": 60 }
+      }
+    },
+
+    "risk_model": {
+      "type": "object",
+      "required": ["clinical_score", "validation_status", "prevalence_prior"],
+      "properties": {
+        "clinical_score": {
+          "enum": ["idrs", "findrisc", "ada"],
+          "description": "The Layer-1 published instrument anchoring this market. Must match ml/pipelines/clinical_scores.DEFAULT_SCORE_BY_REGION."
+        },
+        "core_model_version": { "type": ["string", "null"] },
+        "calibration_model_version": { "type": ["string", "null"] },
+        "validation_status": {
+          "enum": ["validated", "provisional", "not_validated"],
+          "description": "PRD 7.4b. While 'not_validated', the UI MUST degrade to the transparent clinical score and say so. Never quietly guess."
+        },
+        "prevalence_prior": {
+          "type": "object",
+          "required": ["value", "source", "source_verified"],
+          "properties": {
+            "value": {
+              "type": ["number", "null"], "minimum": 0, "maximum": 1,
+              "description": "Adult (20-79) diabetes prevalence as a fraction. NULL until read from a cited source. A wrong prior silently miscalibrates every probability shown to every user in this market - absent and loud beats remembered and quiet."
+            },
+            "source": { "type": "string" },
+            "source_verified": { "type": "boolean" }
+          }
+        },
+        "blend_weight_gbm": {
+          "type": "number", "minimum": 0, "maximum": 1,
+          "description": "final = w*calibrated_GBM + (1-w)*clinical_score. Playbook B8: typically 0.6-0.75, tuned on validation."
+        }
+      }
+    },
+
+    "food": {
+      "type": "object",
+      "properties": {
+        "food_db_version": { "type": ["string", "null"] },
+        "gi_table_version": { "type": ["string", "null"] },
+        "composition_source": { "type": "string" },
+        "composition_licence_status": {
+          "enum": ["cleared", "permission_pending", "blocked", "not_started"]
+        },
+        "portion_units": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["unit_en"],
+            "properties": {
+              "unit_en": { "type": "string" },
+              "unit_local": { "type": "string" },
+              "grams_default": { "type": ["number", "null"] }
+            }
+          }
+        }
+      }
+    },
+
+    "meal_slots": {
+      "type": "array", "minItems": 2,
+      "description": "Region-configurable, never an enum in code (PRD 13.2). breakfast/lunch/dinner vs sehri/iftar vs merienda.",
+      "items": {
+        "type": "object",
+        "required": ["key", "name_en"],
+        "properties": {
+          "key": { "type": "string", "pattern": "^[a-z_]+$" },
+          "name_en": { "type": "string" },
+          "name_local": { "type": "string" },
+          "default_time": { "type": "string", "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$" },
+          "seasonal_only": { "type": "boolean", "default": false }
+        }
+      }
+    },
+
+    "safety_thresholds": {
+      "description": "PRD 3.3 and 5.4. Absolute clinical values, not preferences. A pack may make these STRICTER, never looser - validate_packs.py enforces that.",
+      "type": "object",
+      "required": ["glucose_mmol_l", "min_daily_kcal", "max_daily_deficit_kcal", "min_age", "emergency_number"],
+      "properties": {
+        "glucose_mmol_l": {
+          "type": "object",
+          "required": ["hypoglycaemia", "fasting_urgent", "random_urgent"],
+          "properties": {
+            "hypoglycaemia": { "type": "number", "maximum": 3.9 },
+            "fasting_urgent": { "type": "number", "maximum": 13.9 },
+            "random_urgent": { "type": "number", "maximum": 16.7 }
+          }
+        },
+        "min_daily_kcal": {
+          "type": "object",
+          "required": ["female", "male"],
+          "properties": {
+            "female": { "type": "integer", "minimum": 1200 },
+            "male": { "type": "integer", "minimum": 1500 }
+          }
+        },
+        "max_daily_deficit_kcal": { "type": "integer", "maximum": 500 },
+        "max_weight_loss_kg_per_week": { "type": "number", "maximum": 1.0 },
+        "bmi_floor_disable_weight_loss": { "type": "number", "minimum": 18.5 },
+        "disordered_eating_kcal_floor": { "type": "integer", "minimum": 800 },
+        "min_age": { "type": "integer", "minimum": 18 },
+        "emergency_number": {
+          "type": "string", "minLength": 3,
+          "description": "PRD 18 requires this configured per market before launch."
+        }
+      }
+    },
+
+    "features": {
+      "type": "object",
+      "required": ["clinician_mode_enabled"],
+      "properties": {
+        "clinician_mode_enabled": {
+          "type": "boolean",
+          "description": "MUST be false in the EU without a Notified Body engagement (PRD 3.5). Enforced by validate_packs.py."
+        },
+        "camera_food_logging": { "type": "boolean" },
+        "ai_coach": { "type": "boolean" },
+        "multi_profile": { "type": "boolean" }
+      }
+    },
+
+    "data_residency_zone": {
+      "enum": ["ap-south", "ap-southeast", "me-central", "eu-west", "us-east", "ca-central", "au-southeast"],
+      "description": "PRD 3.5: stamped on the account at signup, never silently migrated. Retrofitting residency is a rewrite."
+    },
+
+    "regulatory": {
+      "type": "object",
+      "required": ["intended_purpose", "risk_wording"],
+      "properties": {
+        "regime": { "type": "string" },
+        "gatekeeper": { "type": "string" },
+        "intended_purpose": {
+          "enum": ["consumer_wellness", "medical_device"],
+          "description": "PRD 3.5. 'consumer_wellness' is what keeps you out of device regulation in most markets."
+        },
+        "risk_wording": {
+          "enum": ["diabetes_risk", "metabolic_health_score"],
+          "description": "Same model, different intended purpose, different words. Regulated markets get 'metabolic_health_score' - EU MDR Rule 11 treats prediction/prognosis software as a device."
+        },
+        "notes": { "type": "string" }
+      }
+    }
+  }
+}

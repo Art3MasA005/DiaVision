@@ -242,13 +242,44 @@ def test_top_factors_are_ranked_and_capped():
 # ── Region routing ────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("region,expected", [
-    ("bd", "IDRS"), ("BD", "IDRS"), ("in", "IDRS"), ("pk", "IDRS"),
-    ("us", "ADA"), ("gb", "FINDRISC"), ("eu", "FINDRISC"),
+    ("bd", "IDRS"), ("BD", "IDRS"), ("in", "IDRS"), ("pk", "IDRS"), ("lk", "IDRS"),
+    ("us", "ADA"), ("ca", "ADA"),
+    ("gb", "FINDRISC"), ("de", "FINDRISC"), ("eu", "FINDRISC"), ("ae", "FINDRISC"),
 ])
 def test_region_routing(region, expected):
     assert score_for_region(make(), region).score == expected
 
 
-def test_unknown_region_falls_back_to_idrs():
-    """Launch market is South Asia; an unmapped region should not crash."""
-    assert score_for_region(make(), "zz").score == "IDRS"
+def test_pack_supplied_score_overrides_the_table():
+    """packs/*.json is the source of truth; the table is only an offline fallback."""
+    assert score_for_region(make(), "bd", score="findrisc").score == "FINDRISC"
+
+
+def test_unmapped_region_does_not_silently_inherit_a_south_asian_score():
+    """A Nigerian user must not quietly receive an instrument derived in India."""
+    r = score_for_region(make(), "zz")
+    assert r.score == "FINDRISC"
+    assert "No clinical score is configured" in r.caveats[0]
+
+
+def test_regions_using_a_non_native_score_say_so():
+    """PRD §7.4b — be honest about validation status rather than guessing."""
+    r = score_for_region(make(), "my")
+    assert "not derived in this population" in r.caveats[0]
+
+
+def test_south_asian_regions_carry_no_fallback_caveat():
+    """IDRS was derived in this population; it should not be hedged."""
+    r = score_for_region(make(), "in")
+    assert not any("not derived in this population" in c for c in r.caveats)
+
+
+def test_unknown_score_name_is_rejected_loudly():
+    with pytest.raises(ValueError, match="unknown clinical score"):
+        score_for_region(make(), "bd", score="cambridge")
+
+
+def test_every_routed_region_resolves_to_an_implemented_score():
+    from pipelines.clinical_scores import DEFAULT_SCORE_BY_REGION, SCORES
+    for code, name in DEFAULT_SCORE_BY_REGION.items():
+        assert name in SCORES, f"region {code} routes to unimplemented score {name}"

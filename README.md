@@ -23,13 +23,28 @@ Stage 0 comes first because `feature_spec.json` is the contract that the DB sche
 ## Layout
 
 ```
-ml/        scripts/ pipelines/ contracts/ artifacts/ reports/
+ml/        scripts/ pipelines/ contracts/ tests/ artifacts/ reports/
 backend/   FastAPI app, alembic migrations, RLS policies, tests
 app/       Flutter (not yet created)
-packs/     region packs — bd.json, food_bd.csv, gi_table.csv
-docs/      data_acquisition · licensing · leakage_audit · model_card · intended_purpose
+packs/     region packs — _schema.json + bd/in/ae/us/gb/de.json
+docs/      data_acquisition · licensing · internationalisation · leakage_audit · model_card
 data/      raw/ interim/ processed/   (gitignored; MANIFEST.json tracks checksums)
 ```
+
+## Global from day one
+
+One **core model** trained on pooled multi-country data, plus a **swappable per-region calibration layer** (cutoffs + prevalence prior + isotonic recalibration). Adding a market ships a config file and a validation set — never a retrain, never a code branch.
+
+Six packs exist today (`bd` `in` `ae` `us` `gb` `de`), covering all five launch waves, three clinical scores, both regulatory wordings, and RTL. All are honestly marked `not_validated`, which means the app degrades to a transparent clinical score and says so.
+
+```powershell
+python ml/scripts/validate_packs.py     # schema + safety-floor + regulatory checks
+python -m pytest ml/tests -q
+```
+
+The validator enforces what a JSON Schema can't: a pack may make a safety threshold **stricter, never looser**; clinician mode is forbidden in EU/UK packs; regulated markets must use the `metabolic_health_score` wording; and a pack's clinical score must agree with the ML routing table.
+
+See [docs/internationalisation.md](docs/internationalisation.md) — including an **open design gap on diaspora users** that needs a decision before the schema freezes.
 
 ## Quickstart
 
