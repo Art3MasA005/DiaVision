@@ -14,10 +14,10 @@ missing filter here returns nothing rather than someone else's data.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app import schemas
@@ -108,7 +108,13 @@ def signup(body: schemas.SignupRequest, session: Session = Depends(anonymous_ses
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             "The safety disclaimer must be accepted before an account is created.")
 
-    existing = session.scalar(select(Account).where(Account.email == body.email))
+    # Uses the same privileged lookup as login: a plain SELECT here would be
+    # filtered to nothing by RLS (no actor yet), so every duplicate would fall
+    # through to the unique constraint and surface as a 500 instead of a 409.
+    existing = session.execute(
+        text("SELECT account_id FROM app_lookup_account_for_auth(:email)"),
+        {"email": body.email},
+    ).one_or_none()
     if existing:
         raise HTTPException(status.HTTP_409_CONFLICT, "An account with that email already exists")
 
@@ -117,7 +123,15 @@ def signup(body: schemas.SignupRequest, session: Session = Depends(anonymous_ses
     except FileNotFoundError:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unsupported region {body.region!r}")
 
+    # The id is generated here rather than by the database so the actor can be
+    # declared BEFORE the insert. RLS on `accounts` requires
+    # id = app_current_account(), and at signup there is no prior actor to
+    # inherit — this is the bootstrap.
+    account_id = uuid.uuid4()
+    set_actor(session, account_id)
+
     account = Account(
+        id=account_id,
         email=body.email,
         password_hash=hash_password(body.password),
         home_region=body.region,
@@ -148,18 +162,36 @@ def signup(body: schemas.SignupRequest, session: Session = Depends(anonymous_ses
 
 @router.post("/auth/login", response_model=schemas.TokenResponse, tags=["auth"])
 def login(body: schemas.LoginRequest, session: Session = Depends(anonymous_session)):
-    account = session.scalar(select(Account).where(Account.email == body.email))
-    # Same message either way — never reveal whether an email is registered.
-    if account is None or not verify_password(body.password, account.password_hash):
+    # RLS on `accounts` keys on app.account_id, which we do not know yet — we
+    # have only an email. app_lookup_account_for_auth is the one narrow
+    # SECURITY DEFINER exception, returning id, hash and deleted_at for a
+    # single email and nothing more. See backend/scripts/setup_db.py.
+    row = session.execute(
+        text("SELECT account_id, password_hash, deleted_at "
+             "FROM app_lookup_account_for_auth(:email)"),
+        {"email": body.email},
+    ).one_or_none()
+
+    # Same message either way, and the hash is verified even when no account
+    # exists, so response timing does not reveal whether an email is registered.
+    if row is None:
+        verify_password(body.password, _DUMMY_HASH)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Incorrect email or password")
-    if account.deleted_at is not None:
+
+    account_id, password_hash, deleted_at = row
+    if not verify_password(body.password, password_hash) or deleted_at is not None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Incorrect email or password")
 
     return schemas.TokenResponse(
-        access_token=create_access_token(account.id),
-        refresh_token=create_refresh_token(account.id),
+        access_token=create_access_token(account_id),
+        refresh_token=create_refresh_token(account_id),
         expires_in=settings.access_token_minutes * 60,
     )
+
+
+# Compared against when no account matches, so a failed lookup costs the same
+# time as a failed password. Computed once at import.
+_DUMMY_HASH = hash_password("bye-bye-diabetes-timing-equaliser")
 
 
 @router.post("/auth/refresh", response_model=schemas.TokenResponse, tags=["auth"])
@@ -227,6 +259,11 @@ def upsert_health_profile(
                   "history_high_glucose", "diabetes_status", "conditions"):
         setattr(health, field, getattr(body, field))
 
+    # The wizard asks for age, but the record stores a date of birth so the
+    # value ages correctly instead of going stale the moment it is saved.
+    # The day is approximate — we never display it, only difference it.
+    health.dob = _dob_from_age(body.age_years)
+
     audit(session, profile, account_id, "write", "health_profile", request)
     session.flush()
 
@@ -261,7 +298,7 @@ def assess_risk(
                         "estimate does not apply. Use management mode instead."),
         })
 
-    record = risk_service.health_profile_to_record(health, age_years=_age_of(session, profile.id))
+    record = risk_service.health_profile_to_record(health)
     region = body.region or profile.region_pack
 
     try:
@@ -300,17 +337,13 @@ def risk_history(profile_id: uuid.UUID, session: Session = Depends(db_session)):
     ))
 
 
-def _age_of(session: Session, profile_id: uuid.UUID) -> int | None:
-    """Age from the most recent assessment inputs, falling back to DOB."""
-    last = session.scalar(
-        select(RiskAssessment).where(RiskAssessment.profile_id == profile_id)
-        .order_by(RiskAssessment.taken_at.desc()).limit(1)
-    )
-    if last and isinstance(last.inputs_json, dict):
-        age = last.inputs_json.get("age_years")
-        if age:
-            return int(age)
-    return None
+def _dob_from_age(age_years: int) -> date:
+    """Today's date, `age_years` back. Feb 29 falls back to Feb 28."""
+    today = date.today()
+    try:
+        return today.replace(year=today.year - age_years)
+    except ValueError:
+        return today.replace(year=today.year - age_years, day=28)
 
 
 # ── vitals ────────────────────────────────────────────────────────────

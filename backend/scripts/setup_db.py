@@ -21,6 +21,8 @@ from pathlib import Path
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
+import psycopg  # noqa: E402
+from psycopg import sql  # noqa: E402
 from sqlalchemy import create_engine, text  # noqa: E402
 
 from app.config import get_settings  # noqa: E402
@@ -50,53 +52,52 @@ def main() -> int:
         print(f"Generated a password for {settings.postgres_user}:\n    {app_password}")
         print("  -> put this in backend/.env as POSTGRES_PASSWORD\n")
 
-    url = (f"postgresql+psycopg://{settings.postgres_superuser}:{su_password}"
-           f"@{settings.postgres_host}:{settings.postgres_port}/postgres")
+    dsn = (f"host={settings.postgres_host} port={settings.postgres_port} "
+           f"dbname=postgres user={settings.postgres_superuser} password={su_password}")
 
-    # AUTOCOMMIT because CREATE DATABASE cannot run inside a transaction block.
-    engine = create_engine(url, isolation_level="AUTOCOMMIT")
+    role = sql.Identifier(settings.postgres_user)
+    database = sql.Identifier(settings.postgres_db)
+    # PostgreSQL DDL cannot take bind parameters, so the password is composed
+    # as a literal. psycopg.sql.Literal quotes and escapes it properly —
+    # never build this with an f-string.
+    pw_literal = sql.Literal(app_password)
 
     try:
-        with engine.connect() as conn:
-            version = conn.execute(text("SHOW server_version")).scalar()
+        # autocommit because CREATE DATABASE cannot run inside a transaction.
+        with psycopg.connect(dsn, autocommit=True) as conn:
+            version = conn.execute("SHOW server_version").fetchone()[0]
             print(f"Connected to PostgreSQL {version} on port {settings.postgres_port}")
 
             if args.drop:
                 print(f"Dropping database {settings.postgres_db} ...")
-                conn.execute(text(
+                conn.execute(
                     "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                    "WHERE datname = :db AND pid <> pg_backend_pid()"
-                ), {"db": settings.postgres_db})
-                conn.execute(text(f'DROP DATABASE IF EXISTS "{settings.postgres_db}"'))
+                    "WHERE datname = %s AND pid <> pg_backend_pid()",
+                    (settings.postgres_db,),
+                )
+                conn.execute(sql.SQL("DROP DATABASE IF EXISTS {}").format(database))
 
             exists = conn.execute(
-                text("SELECT 1 FROM pg_roles WHERE rolname = :r"),
-                {"r": settings.postgres_user},
-            ).scalar()
-            if exists:
-                conn.execute(text(
-                    f'ALTER ROLE "{settings.postgres_user}" WITH LOGIN PASSWORD :pw '
-                    f'NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS'
-                ), {"pw": app_password})
-                print(f"Role {settings.postgres_user} updated")
-            else:
-                conn.execute(text(
-                    f'CREATE ROLE "{settings.postgres_user}" WITH LOGIN PASSWORD :pw '
-                    f'NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS'
-                ), {"pw": app_password})
-                print(f"Role {settings.postgres_user} created (no superuser, no bypassrls)")
+                "SELECT 1 FROM pg_roles WHERE rolname = %s", (settings.postgres_user,)
+            ).fetchone()
+
+            verb = "ALTER" if exists else "CREATE"
+            conn.execute(sql.SQL(
+                "{} ROLE {} WITH LOGIN PASSWORD {} "
+                "NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS"
+            ).format(sql.SQL(verb), role, pw_literal))
+            print(f"Role {settings.postgres_user} "
+                  f"{'updated' if exists else 'created'} (no superuser, no bypassrls)")
 
             db_exists = conn.execute(
-                text("SELECT 1 FROM pg_database WHERE datname = :d"),
-                {"d": settings.postgres_db},
-            ).scalar()
+                "SELECT 1 FROM pg_database WHERE datname = %s", (settings.postgres_db,)
+            ).fetchone()
             if db_exists:
                 print(f"Database {settings.postgres_db} already exists")
             else:
-                conn.execute(text(f'CREATE DATABASE "{settings.postgres_db}"'))
+                conn.execute(sql.SQL("CREATE DATABASE {}").format(database))
                 print(f"Database {settings.postgres_db} created")
-            conn.execute(text(
-                f'ALTER DATABASE "{settings.postgres_db}" OWNER TO "{settings.postgres_user}"'))
+            conn.execute(sql.SQL("ALTER DATABASE {} OWNER TO {}").format(database, role))
 
         # Extensions must be created inside the target database.
         target = create_engine(
@@ -108,6 +109,34 @@ def main() -> int:
             conn.execute(text('CREATE EXTENSION IF NOT EXISTS "pgcrypto"'))
             conn.execute(text(f'GRANT ALL ON SCHEMA public TO "{settings.postgres_user}"'))
             print("Extensions and schema grants applied")
+
+            # Login has a bootstrapping problem: RLS on `accounts` resolves
+            # visibility from app.account_id, but at login we only have an
+            # email and do not yet know the id. This function is the single
+            # narrow exception — SECURITY DEFINER, owned by the superuser, so
+            # it bypasses RLS.
+            #
+            # It returns three columns for one email and nothing else: no
+            # billing data, no profile links, and no way to enumerate. Written
+            # in plpgsql because plpgsql bodies are not parsed until first call,
+            # so this can be created before the table exists.
+            conn.execute(text("""
+                CREATE OR REPLACE FUNCTION app_lookup_account_for_auth(p_email text)
+                RETURNS TABLE (account_id uuid, password_hash text, deleted_at timestamptz)
+                LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $fn$
+                BEGIN
+                  -- password_hash is varchar(255); RETURN QUERY demands an
+                  -- exact type match against the declared TABLE(...) columns.
+                  RETURN QUERY
+                    SELECT a.id, a.password_hash::text, a.deleted_at
+                    FROM accounts a WHERE a.email = p_email;
+                END $fn$;
+            """))
+            conn.execute(text("REVOKE ALL ON FUNCTION app_lookup_account_for_auth(text) FROM PUBLIC"))
+            conn.execute(text(
+                f'GRANT EXECUTE ON FUNCTION app_lookup_account_for_auth(text) '
+                f'TO "{settings.postgres_user}"'))
+            print("Auth lookup function created (SECURITY DEFINER, superuser-owned)")
 
     except Exception as exc:
         print(f"\nFailed: {exc}")

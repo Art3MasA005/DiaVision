@@ -58,7 +58,7 @@ def two_users():
             account_id = uuid.uuid4()
             set_actor(session, account_id)
             account = Account(
-                id=account_id, email=f"{tag}-{account_id.hex[:8]}@test.local",
+                id=account_id, email=f"{tag}-{account_id.hex[:8]}@example.com",
                 password_hash=hash_password("correct horse battery"),
                 home_region="bd",
             )
@@ -133,12 +133,17 @@ def test_alice_cannot_read_bobs_profile(two_users):
 
 
 def test_alice_cannot_read_bobs_health_record(two_users):
-    (alice, _), (_, bob_profile) = two_users
+    (alice, alice_profile), (_, bob_profile) = two_users
     session = SessionLocal()
     try:
         set_actor(session, alice)
         assert session.get(HealthProfile, bob_profile) is None
-        assert session.scalars(select(HealthProfile)).all() == []
+
+        # Alice legitimately sees her OWN record — the guarantee is that the
+        # visible set is exactly hers, not that it is empty.
+        visible = {h.profile_id for h in session.scalars(select(HealthProfile))}
+        assert visible == {alice_profile}
+        assert bob_profile not in visible
     finally:
         session.close()
 
@@ -247,7 +252,13 @@ def test_revocation_takes_effect_immediately(two_users):
 
 
 def test_the_audit_log_cannot_be_rewritten(two_users):
-    """An audit trail the application can edit is not an audit trail."""
+    """An audit trail the application can edit is not an audit trail.
+
+    Note the shape of the guarantee. With no UPDATE or DELETE policy present,
+    PostgreSQL does not raise — the USING clause simply matches no rows, so the
+    statement succeeds having changed nothing. Silent success is the expected
+    behaviour, so the assertion is on the row count and the surviving content.
+    """
     (alice, alice_profile), _ = two_users
     session = SessionLocal()
     try:
@@ -258,18 +269,23 @@ def test_the_audit_log_cannot_be_rewritten(two_users):
         ))
         session.commit()
 
-        with pytest.raises(Exception):
-            session.execute(text(
-                "UPDATE access_audit_log SET action = 'tampered' WHERE profile_id = :p"
-            ), {"p": alice_profile})
-            session.flush()
-        session.rollback()
+        set_actor(session, alice)
+        updated = session.execute(text(
+            "UPDATE access_audit_log SET action = 'tampered' WHERE profile_id = :p"
+        ), {"p": alice_profile})
+        assert updated.rowcount == 0, "audit rows must not be updatable"
 
-        with pytest.raises(Exception):
-            session.execute(text(
-                "DELETE FROM access_audit_log WHERE profile_id = :p"
-            ), {"p": alice_profile})
-            session.flush()
+        deleted = session.execute(text(
+            "DELETE FROM access_audit_log WHERE profile_id = :p"
+        ), {"p": alice_profile})
+        assert deleted.rowcount == 0, "audit rows must not be deletable"
+        session.commit()
+
+        set_actor(session, alice)
+        rows = session.execute(text(
+            "SELECT action FROM access_audit_log WHERE profile_id = :p"
+        ), {"p": alice_profile}).scalars().all()
+        assert rows == ["read"], "the original audit entry must survive intact"
     finally:
         session.rollback()
         session.close()

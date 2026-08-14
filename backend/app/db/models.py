@@ -142,6 +142,16 @@ class ProfileMembership(Base):
     account_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    # Denormalised from profiles.account_id_owner, and load-bearing rather
+    # than an optimisation. RLS policies must not form a cycle: if the
+    # membership policy had to look up profiles to find the owner, and the
+    # profiles policy looks up memberships, neither could ever resolve.
+    # Carrying the owner here lets the membership policies read their own
+    # columns only, which terminates. Kept in step by a trigger.
+    owner_account_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     scope: Mapped[str] = mapped_column(String(16), default="view", nullable=False)
 
