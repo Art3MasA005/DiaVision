@@ -1,8 +1,15 @@
-# Bye Bye Diabetes
+# DiaVision
 
-AI-powered diabetes risk and lifestyle companion. Bangladesh-first, built as a localisation engine.
+Diabetes risk screening and lifestyle companion. Bangladesh-first, built as a localisation engine.
 
-**Specs:** [`ByeByeDiabetes_PRD_v2.md`](ByeByeDiabetes_PRD_v2.md) · [`Datasets_and_Accuracy_Playbook.md`](Datasets_and_Accuracy_Playbook.md)
+Eleven questions, no blood test, about two minutes — and back comes a calibrated
+**range** for whether someone already has undetected high blood sugar, with the
+two or three things they can actually change about it. In English and Bangla.
+
+> **Not a medical device.** It does not diagnose or treat anything, its estimates
+> can be wrong, and it has been reviewed by no medical regulator. See [LICENSE](LICENSE).
+
+**Specs:** [`DiaVision_PRD_v2.md`](DiaVision_PRD_v2.md) · [`Datasets_and_Accuracy_Playbook.md`](Datasets_and_Accuracy_Playbook.md) · [`docs/ui_spec.md`](docs/ui_spec.md)
 
 ---
 
@@ -12,11 +19,38 @@ AI-powered diabetes risk and lifestyle companion. Bangladesh-first, built as a l
 |---|---|---|
 | **0** | Data acquisition → leakage audit → **freeze `feature_spec.json`** | ✅ **done** — contract frozen at v1.0.0 |
 | **2** | Model A training + calibration + honest accuracy report | ✅ **done** — AUC 0.810, ECE 0.020 |
-| **1** | FastAPI + Postgres backend, Account/Profile schema, RLS, safety rails | 🔨 next |
-| **3** | Wire model into `/risk/assess`, export ONNX for on-device | ⏳ |
-| **4** | Flutter app — risk-model vertical slice | ⏳ |
+| **1** | FastAPI + Postgres backend, Account/Profile schema, RLS, safety rails | ✅ **done** — 143 tests |
+| **3** | Wire model into `/risk/assess` | ✅ **done** — ONNX export still open |
+| **4** | Flutter app — all 19 screens, EN + BN, light + dark | ✅ **done** — 55 tests, 28 screen goldens |
 
 Stage 2 landed before Stage 1 because the leakage audit had to settle which features exist before the DB schema could be written against them. It was the right call — the audit removed three fields from the model.
+
+## Running it
+
+```powershell
+.\run.ps1          # backend + app on an Android emulator
+.\run.ps1 -Web     # backend + app in Chrome
+```
+
+Needs PostgreSQL and a one-time `alembic -c backend/alembic.ini upgrade head`.
+Details in [app/README.md](app/README.md).
+
+## What is actually built, and what is honestly stubbed
+
+The app is complete as a product surface: eleven questions → a calibrated risk
+range → tracking, check-ins, activity, vitals, insights and a clinician report,
+in English and Bangla, light and dark, with the safety machinery wired through.
+
+Three things have **no real implementation and say so on screen** rather than
+faking it — photo food recognition, the AI coach's language model, and payment.
+Each has its contract, its guards and its tests in place so the missing piece
+drops in behind them. [app/README.md](app/README.md#things-built-honestly-rather-than-faked)
+explains why each was left honest instead of mocked.
+
+The most interesting bugs found while building it are written up there too,
+including one where the API told users a dangerous glucose reading had been
+recorded and the row was being rolled back by the very exception that carried
+the message.
 
 ## Model A — current results
 
@@ -33,19 +67,21 @@ Full disclosure in [docs/model_card.md](docs/model_card.md). Two findings worth 
 
 **We rejected a 0.94 AUC model.** Three features would have raised the headline from 0.806 to 0.9365 — and made it *0.18 AUC worse* on users who have never been screened, which is exactly who this product is for. See [docs/leakage_audit.md](docs/leakage_audit.md).
 
-Stage 0 comes first because `feature_spec.json` is the contract that the DB schema, the API, and the onboarding wizard are all built against. Discovering during training that a feature must be dropped for leakage is cheap now and expensive later.
+`feature_spec.json` froze first because it is the contract the DB schema, the API and the onboarding wizard are all generated against. Discovering during training that a feature must be dropped for leakage was cheap then and would have been expensive later.
 
-**First scope:** onboarding → health profile → Tier-1 risk assessment → factor breakdown → what-if simulator, end to end. Food vision, clinician mode, multi-profile UI, and the AI coach are deliberately out (PRD §16 names scope explosion as a top risk) — though the **Account/Profile split and `profile_id` keying go in from commit #1**, because retrofitting those is a rewrite.
+**Still out of scope:** clinician mode and multi-profile UI (PRD §16 names scope explosion as a top risk) — though the **Account/Profile split and `profile_id` keying went in from commit #1**, because retrofitting those is a rewrite.
 
 ## Layout
 
 ```
-ml/        scripts/ pipelines/ contracts/ tests/ artifacts/ reports/
-backend/   FastAPI app, alembic migrations, RLS policies, tests
-app/       Flutter (not yet created)
-packs/     region packs — _schema.json + bd/in/ae/us/gb/de.json
-docs/      data_acquisition · licensing · internationalisation · leakage_audit · model_card
-data/      raw/ interim/ processed/   (gitignored; MANIFEST.json tracks checksums)
+ml/             scripts/ pipelines/ contracts/ tests/ artifacts/ reports/
+backend/        FastAPI app, alembic migrations, RLS policies, 143 tests
+app/            Flutter — 19 screens, EN + BN, light + dark, 55 tests
+packs/          region packs — _schema.json + bd/in/ae/us/gb/de.json
+docs/           data_acquisition · licensing · internationalisation ·
+                leakage_audit · model_card · ui_spec
+design_handoff/ the 19-screen design reference the app was built from
+data/           raw/ interim/ processed/   (gitignored; MANIFEST.json tracks checksums)
 ```
 
 ## Global from day one
@@ -61,9 +97,12 @@ python -m pytest ml/tests -q
 
 The validator enforces what a JSON Schema can't: a pack may make a safety threshold **stricter, never looser**; clinician mode is forbidden in EU/UK packs; regulated markets must use the `metabolic_health_score` wording; and a pack's clinical score must agree with the ML routing table.
 
-See [docs/internationalisation.md](docs/internationalisation.md) — including an **open design gap on diaspora users** that needs a decision before the schema freezes.
+See [docs/internationalisation.md](docs/internationalisation.md). The **diaspora gap** it raises — a Bangladeshi in London scored against European cutoffs instead of Asian-Pacific — is resolved in the ML layer by an optional, user-declared `ancestry_cutoff_group`, and the app collects it on a screen worded as *which population's guidelines*, never as a question about race. The API does not persist it yet; that is the one contract gap still open.
 
-## Quickstart
+## Reproducing the model
+
+The app runs without this — the trained artefacts are what the API loads. This
+is only if you want to retrain.
 
 ```powershell
 python -m venv .venv
@@ -74,7 +113,7 @@ python ml/scripts/fetch_data.py --all    # downloads what it can, prints steps f
 python ml/scripts/inspect_raw.py         # verify what landed
 ```
 
-See [docs/data_acquisition.md](docs/data_acquisition.md). NHANES is automated; BRFSS and the Mendeley sets need a browser (their hosts block scripted clients).
+See [docs/data_acquisition.md](docs/data_acquisition.md). NHANES is automated; BRFSS and the Mendeley sets need a browser (their hosts block scripted clients). No health data is committed — `data/` is gitignored and `MANIFEST.json` tracks checksums instead.
 
 ## Non-negotiables
 
@@ -90,6 +129,12 @@ These come from PRD §3 and §5.4 and are not up for renegotiation during implem
 
 ## Prerequisites
 
-- Python 3.10+ ✅
-- Flutter ✅
-- **PostgreSQL 15+ — not yet installed.** Needed before Stage 1. Either install it locally, or use a hosted instance (Neon/Supabase free tier) and put the URL in `.env`. Docker is also absent, so `docker-compose` is not currently an option.
+- Python 3.10+
+- Flutter 3.32+
+- PostgreSQL 15+ — a local instance, or a hosted one (Neon/Supabase free tier)
+  with the URL in `backend/.env`. Copy `backend/.env.example` to start.
+
+The application role must **not** be a superuser: a superuser silently bypasses
+every row-level security policy, which would make the isolation tests pass while
+providing no isolation at all. `backend/scripts/setup_db.py` creates the role
+correctly, and the engine refuses to connect if it ever gains those rights.

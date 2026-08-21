@@ -41,7 +41,17 @@ app/.flutter-plugins
 app/.flutter-plugins-dependencies
 app/ios/Pods/
 app/android/.gradle/
+app/android/local.properties
 *.iml
+
+# Golden-test failure output. Written by `flutter test` when a golden does not
+# match, useful for one debugging session and meaningless afterwards. The
+# goldens themselves ARE committed — they are the review artefact.
+app/test/failures/
+
+# ── Archives and scratch ───────────────────────────────────────────
+# The design bundle is committed unpacked; the zip is a duplicate.
+ui.zip
 
 # ── OS / editor ────────────────────────────────────────────────────
 .DS_Store
