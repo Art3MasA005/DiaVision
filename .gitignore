@@ -5,6 +5,10 @@ data/processed/*
 !data/**/.gitkeep
 
 # ── ML artifacts: models are built, not committed ──────────────────
+# A clone still runs. `predict()` only uses the gradient booster where a
+# region pack is marked `validated` or `provisional`, and none is yet — every
+# market answers with the transparent clinical score and says so (PRD §7.4b).
+# Retrain with ml/scripts/, or read the committed metrics and model card.
 ml/artifacts/*
 !ml/artifacts/.gitkeep
 *.pkl
@@ -24,6 +28,12 @@ kaggle.json
 *.pem
 *.key
 
+# Android signing. A leaked keystore cannot be revoked — anyone holding it can
+# publish an update to your app.
+*.jks
+*.keystore
+app/android/key.properties
+
 # ── Python ─────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
@@ -33,15 +43,25 @@ venv/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+*.egg-info/
 
 # ── Flutter / Dart ─────────────────────────────────────────────────
+# pubspec.lock IS committed: this is an application, not a library, so the
+# dependency versions should be reproducible.
 app/.dart_tool/
 app/build/
 app/.flutter-plugins
 app/.flutter-plugins-dependencies
-app/ios/Pods/
 app/android/.gradle/
 app/android/local.properties
+app/android/app/*/output-metadata.json
+app/ios/Pods/
+app/ios/.symlinks/
+app/ios/Flutter/Flutter.framework/
+app/ios/Flutter/Flutter.podspec
+app/windows/flutter/ephemeral/
+app/linux/flutter/ephemeral/
+app/macos/Flutter/ephemeral/
 *.iml
 
 # Golden-test failure output. Written by `flutter test` when a golden does not
@@ -52,9 +72,11 @@ app/test/failures/
 # ── Archives and scratch ───────────────────────────────────────────
 # The design bundle is committed unpacked; the zip is a duplicate.
 ui.zip
+*.log
 
-# ── OS / editor ────────────────────────────────────────────────────
+# ── OS / editor / tooling ──────────────────────────────────────────
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
+.claude/
