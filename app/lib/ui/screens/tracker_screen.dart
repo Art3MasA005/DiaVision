@@ -313,7 +313,7 @@ class _TrackerScreenState extends State<TrackerScreen> {
                 3,
                 cross: CrossAxisAlignment.start,
                 children: [
-                  Text(_slotLabel(s, meal.slot),
+                  Text(s.mealSlot(meal.slot),
                       style: context.t.rowTitle.copyWith(color: c.text)),
                   P(meal.items.map((i) => i.name).join(', '),
                       style: context.t.footnote),
@@ -344,14 +344,4 @@ class _TrackerScreenState extends State<TrackerScreen> {
           ],
         ),
       );
-
-  String _slotLabel(dynamic s, String slot) => switch (slot) {
-        'breakfast' => s.lang == 'bn' ? 'সকালের নাশতা' : 'Breakfast',
-        'lunch' => s.lang == 'bn' ? 'দুপুরের খাবার' : 'Lunch',
-        'dinner' => s.lang == 'bn' ? 'রাতের খাবার' : 'Dinner',
-        'snack' => s.lang == 'bn' ? 'নাশতা' : 'Snack',
-        'sehri' => s.lang == 'bn' ? 'সেহরি' : 'Sehri',
-        'iftar' => s.lang == 'bn' ? 'ইফতার' : 'Iftar',
-        _ => slot,
-      };
 }

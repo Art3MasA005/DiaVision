@@ -178,6 +178,22 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Switch which family member's record the app is reading and writing.
+  ///
+  /// The home header's avatar is the only way in, and the id is persisted so
+  /// the next cold start opens on the same person rather than silently
+  /// reverting to whoever `GET /profiles` happens to list first. The cached
+  /// result belongs to the old profile, so it is dropped rather than shown
+  /// under a new name.
+  Future<void> setProfile(Profile value) async {
+    if (profile?.id == value.id) return;
+    profile = value;
+    lastResult = null;
+    await prefs.setProfileId(value.id);
+    await prefs.clearLastResult();
+    notifyListeners();
+  }
+
   Future<void> saveResult(RiskResult result) async {
     lastResult = result;
     await prefs.setLastResult(result.encode());

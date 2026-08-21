@@ -7,10 +7,10 @@
 /// change to the painter and look at the output.
 library;
 
-import 'package:byebye/core/theme.dart';
-import 'package:byebye/core/tokens.dart';
-import 'package:byebye/core/typography.dart';
-import 'package:byebye/ui/illustrations/waist_diagram.dart';
+import 'package:diavision/core/theme.dart';
+import 'package:diavision/core/tokens.dart';
+import 'package:diavision/core/typography.dart';
+import 'package:diavision/ui/illustrations/waist_diagram.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

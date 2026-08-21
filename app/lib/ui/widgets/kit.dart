@@ -277,21 +277,33 @@ class PillButton extends StatelessWidget {
               ? null
               : Border.all(color: off ? c.neutral.c300 : border!, width: 1.5),
         ),
-        child: HGap(
-          9,
-          main: MainAxisAlignment.center,
-          children: [
-            if (icon != null)
-              LineIcon(icon!, size: 19, color: off ? c.neutral.c600 : fg),
-            Flexible(
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                style: (compact ? context.t.body.copyWith(fontWeight: FontWeight.w700) : context.t.button)
-                    .copyWith(color: off ? c.neutral.c600 : fg),
-              ),
-            ),
-          ],
+        // A pill is usually the full-width child of a Column, but the home
+        // check-in card puts one beside a flexible text block — and a Row
+        // hands its inflexible children unbounded width, which a `Flexible`
+        // label cannot survive. Same shape as GhostButton, same reason.
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final text = Text(
+              label,
+              textAlign: TextAlign.center,
+              style: (compact
+                      ? context.t.body.copyWith(fontWeight: FontWeight.w700)
+                      : context.t.button)
+                  .copyWith(color: off ? c.neutral.c600 : fg),
+            );
+            return Row(
+              mainAxisSize: constraints.hasBoundedWidth
+                  ? MainAxisSize.max
+                  : MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              spacing: 9,
+              children: [
+                if (icon != null)
+                  LineIcon(icon!, size: 19, color: off ? c.neutral.c600 : fg),
+                if (constraints.hasBoundedWidth) Flexible(child: text) else text,
+              ],
+            );
+          },
         ),
       ),
     );
@@ -362,6 +374,7 @@ class CircleIconButton extends StatelessWidget {
     this.size = 40,
     this.iconSize = 19,
     this.semanticLabel,
+    this.shadow = false,
   });
 
   final String icon;
@@ -369,6 +382,11 @@ class CircleIconButton extends StatelessWidget {
   final double size;
   final double iconSize;
   final String? semanticLabel;
+
+  /// The home header's two round buttons sit on the page ground rather than
+  /// on a card, and the handoff lifts them with `shadow-sm` so they read as
+  /// controls. Everywhere else the border alone is enough.
+  final bool shadow;
 
   @override
   Widget build(BuildContext context) {
@@ -388,6 +406,7 @@ class CircleIconButton extends StatelessWidget {
             color: c.card,
             shape: BoxShape.circle,
             border: Border.all(color: c.neutral.c300, width: 1.5),
+            boxShadow: shadow ? AppShadow.sm(c.isDark) : null,
           ),
           child: Center(
             child: LineIcon(

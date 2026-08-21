@@ -11,30 +11,30 @@ library;
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:byebye/core/theme.dart';
-import 'package:byebye/data/api.dart';
-import 'package:byebye/data/models.dart';
-import 'package:byebye/data/store.dart';
-import 'package:byebye/state/app_state.dart';
-import 'package:byebye/ui/screens/activity_screen.dart';
-import 'package:byebye/ui/screens/auth_screen.dart';
-import 'package:byebye/ui/screens/checkin_screen.dart';
-import 'package:byebye/ui/screens/coach_screen.dart';
-import 'package:byebye/ui/screens/disclaimer_screen.dart';
-import 'package:byebye/ui/screens/edge_states.dart';
-import 'package:byebye/ui/screens/home_screen.dart';
-import 'package:byebye/ui/screens/insights_screen.dart';
-import 'package:byebye/ui/screens/labs_screen.dart';
-import 'package:byebye/ui/screens/paywall_screen.dart';
-import 'package:byebye/ui/screens/population_screen.dart';
-import 'package:byebye/ui/screens/risk_screen.dart';
-import 'package:byebye/ui/screens/scan_screen.dart';
-import 'package:byebye/ui/screens/settings_screen.dart';
-import 'package:byebye/ui/screens/tracker_screen.dart';
-import 'package:byebye/ui/screens/vitals_screen.dart';
-import 'package:byebye/ui/screens/waist_guide_screen.dart';
-import 'package:byebye/ui/screens/wizard_screen.dart';
-import 'package:byebye/state/wizard_state.dart';
+import 'package:diavision/core/theme.dart';
+import 'package:diavision/data/api.dart';
+import 'package:diavision/data/models.dart';
+import 'package:diavision/data/store.dart';
+import 'package:diavision/state/app_state.dart';
+import 'package:diavision/ui/screens/activity_screen.dart';
+import 'package:diavision/ui/screens/auth_screen.dart';
+import 'package:diavision/ui/screens/checkin_screen.dart';
+import 'package:diavision/ui/screens/coach_screen.dart';
+import 'package:diavision/ui/screens/disclaimer_screen.dart';
+import 'package:diavision/ui/screens/edge_states.dart';
+import 'package:diavision/ui/screens/home_screen.dart';
+import 'package:diavision/ui/screens/insights_screen.dart';
+import 'package:diavision/ui/screens/labs_screen.dart';
+import 'package:diavision/ui/screens/paywall_screen.dart';
+import 'package:diavision/ui/screens/population_screen.dart';
+import 'package:diavision/ui/screens/risk_screen.dart';
+import 'package:diavision/ui/screens/scan_screen.dart';
+import 'package:diavision/ui/screens/settings_screen.dart';
+import 'package:diavision/ui/screens/tracker_screen.dart';
+import 'package:diavision/ui/screens/vitals_screen.dart';
+import 'package:diavision/ui/screens/waist_guide_screen.dart';
+import 'package:diavision/ui/screens/wizard_screen.dart';
+import 'package:diavision/state/wizard_state.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -340,11 +340,18 @@ const _vitals = [
    'context_tag': 'fasting', 'recorded_at': '2026-08-13T07:20:00+06:00'},
 ];
 
+const _profiles = [
+  {'id': '38d83ef7-4dfe-41cc-9fd0-9c27aacc2e9f', 'display_name': 'Rumana',
+   'region_pack': 'bd', 'relationship': 'self', 'is_self': true,
+   'created_at': '2026-07-01T09:00:00+06:00'},
+];
+
 List<Object?> _listFor(String path) {
   if (path.endsWith('/risk/history')) return _riskHistory;
   if (path.endsWith('/activity')) return _activityWeek;
   if (path.endsWith('/foods')) return _foods;
   if (path.endsWith('/vitals')) return _vitals;
+  if (path.endsWith('/profiles')) return _profiles;
   if (path.endsWith('/meals')) return _planToday['meals'] as List;
   return const [];
 }
@@ -383,6 +390,7 @@ http.Client _cannedClient() => MockClient((request) async {
       } else if (path.endsWith('/risk/history') ||
           path.endsWith('/coach/history') ||
           path.endsWith('/activity') ||
+          path.endsWith('/profiles') ||
           path.endsWith('/vitals') ||
           path.endsWith('/foods') ||
           path.endsWith('/meals')) {
@@ -599,6 +607,16 @@ void main() {
 
   testWidgets('09 home, English', (t) async {
     await shoot(t, name: '09_home_en', screen: const HomeScreen());
+  });
+
+  // The home redesign inverts three ramps and swaps the weekday labels, so
+  // the dark Bangla shot is the one that catches a role used the wrong way up.
+  testWidgets('09 home, Bangla dark', (t) async {
+    await shoot(t,
+        name: '09_home_bn_dark',
+        screen: const HomeScreen(),
+        lang: 'bn',
+        dark: true);
   });
 
   testWidgets('edge — safety card, urgent', (t) async {

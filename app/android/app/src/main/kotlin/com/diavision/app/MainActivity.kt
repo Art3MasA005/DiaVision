@@ -1,4 +1,4 @@
-package com.byebyediabetes.byebye
+package com.diavision.app
 
 import io.flutter.embedding.android.FlutterActivity
 

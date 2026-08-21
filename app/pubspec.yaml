@@ -1,5 +1,5 @@
-name: byebye
-description: "DiaVision — onboarding to risk. Screens 01–09."
+name: diavision
+description: "DiaVision — diabetes risk screening and lifestyle companion."
 publish_to: "none"
 version: 0.1.0+1
 

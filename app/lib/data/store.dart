@@ -119,6 +119,10 @@ class PrefsStore {
   Future<void> setLastResult(String rawJson) =>
       _prefs.setString(_kLastResult, rawJson);
 
+  /// Drop the cached estimate without ending the session — switching profile
+  /// must not leave one person's number on screen under another's name.
+  Future<void> clearLastResult() => _prefs.remove(_kLastResult);
+
   Future<void> clearSession() async {
     await _prefs.remove(_kProfileId);
     await _prefs.remove(_kLastResult);

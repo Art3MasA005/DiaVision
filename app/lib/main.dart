@@ -50,11 +50,11 @@ Future<void> main() async {
     WidgetsBinding.instance.platformDispatcher.locale.languageCode,
   );
 
-  runApp(ByeByeApp(state: state));
+  runApp(DiaVisionApp(state: state));
 }
 
-class ByeByeApp extends StatelessWidget {
-  const ByeByeApp({super.key, required this.state});
+class DiaVisionApp extends StatelessWidget {
+  const DiaVisionApp({super.key, required this.state});
 
   final AppState state;
 

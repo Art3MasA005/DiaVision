@@ -293,6 +293,25 @@ abstract class Strings {
   String get homeCheckInTakes;
   String get homeQuickActions;
 
+  /// Seven short weekday labels, Monday first — index with
+  /// `DateTime.weekday - 1`. The day strip is the only place they appear.
+  List<String> get weekdayShort;
+  String homeGreetingNamed(String name);
+  String get homeTrendImproving;
+  String get homeTrendSteady;
+  String get homeTrendRising;
+  String get homeCheckInStart;
+  String get homePlanMeals;
+  String get homePlanMove;
+  String get homePlanReading;
+  String stepsOf(String steps, String goal);
+  String get homeProfileTitle;
+  String mealsOn(String date);
+
+  /// The meal-slot names the contract uses on the wire. One table, because
+  /// Home and the tracker were each carrying their own copy.
+  String mealSlot(String slot);
+
   // ── 10 tracker ──────────────────────────────────────────────────────
   String get trackerHead;
   String get trackerRemaining;
@@ -1033,6 +1052,42 @@ class _En extends Strings {
   String get homeCheckInTakes => 'Takes about 30 seconds';
   @override
   String get homeQuickActions => 'Quick actions';
+
+  @override
+  List<String> get weekdayShort =>
+      const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  @override
+  String homeGreetingNamed(String name) => '$homeGreeting, $name';
+  @override
+  String get homeTrendImproving => 'Improving';
+  @override
+  String get homeTrendSteady => 'Steady';
+  @override
+  String get homeTrendRising => 'Moving up';
+  @override
+  String get homeCheckInStart => 'Start';
+  @override
+  String get homePlanMeals => 'Log what you eat';
+  @override
+  String get homePlanMove => 'Move for 20 minutes';
+  @override
+  String get homePlanReading => 'Fasting glucose reading';
+  @override
+  String stepsOf(String steps, String goal) => '$steps / $goal steps';
+  @override
+  String get homeProfileTitle => 'Whose diary is this?';
+  @override
+  String mealsOn(String date) => 'Meals on $date';
+  @override
+  String mealSlot(String slot) => switch (slot) {
+        'breakfast' => 'Breakfast',
+        'lunch' => 'Lunch',
+        'dinner' => 'Dinner',
+        'snack' => 'Snack',
+        'sehri' => 'Sehri',
+        'iftar' => 'Iftar',
+        _ => slot,
+      };
 
   @override
   String get trackerHead => 'Calorie tracker';
@@ -1945,6 +2000,42 @@ class _Bn extends Strings {
   String get homeCheckInTakes => 'প্রায় ৩০ সেকেন্ড লাগে';
   @override
   String get homeQuickActions => 'দ্রুত কাজ';
+
+  @override
+  List<String> get weekdayShort =>
+      const ['সোম', 'মঙ্গল', 'বুধ', 'বৃহ', 'শুক্র', 'শনি', 'রবি'];
+  @override
+  String homeGreetingNamed(String name) => '$homeGreeting, $name';
+  @override
+  String get homeTrendImproving => 'কমছে';
+  @override
+  String get homeTrendSteady => 'স্থির';
+  @override
+  String get homeTrendRising => 'বাড়ছে';
+  @override
+  String get homeCheckInStart => 'শুরু';
+  @override
+  String get homePlanMeals => 'যা খাচ্ছেন লিখে রাখুন';
+  @override
+  String get homePlanMove => '২০ মিনিট হাঁটুন';
+  @override
+  String get homePlanReading => 'ফাস্টিং গ্লুকোজ মাপুন';
+  @override
+  String stepsOf(String steps, String goal) => '$steps / $goal পদক্ষেপ';
+  @override
+  String get homeProfileTitle => 'এটি কার ডায়েরি?';
+  @override
+  String mealsOn(String date) => '$date-এর খাবার';
+  @override
+  String mealSlot(String slot) => switch (slot) {
+        'breakfast' => 'সকালের নাশতা',
+        'lunch' => 'দুপুরের খাবার',
+        'dinner' => 'রাতের খাবার',
+        'snack' => 'নাশতা',
+        'sehri' => 'সেহরি',
+        'iftar' => 'ইফতার',
+        _ => slot,
+      };
 
   @override
   String get trackerHead => 'ক্যালরি ট্র্যাকার';

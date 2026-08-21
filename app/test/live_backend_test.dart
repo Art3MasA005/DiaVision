@@ -12,8 +12,8 @@ library;
 
 import 'dart:io';
 
-import 'package:byebye/data/api.dart';
-import 'package:byebye/data/models.dart';
+import 'package:diavision/data/api.dart';
+import 'package:diavision/data/models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Polls [check] until it holds, or fails.
