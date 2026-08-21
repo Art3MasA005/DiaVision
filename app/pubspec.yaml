@@ -1,0 +1,44 @@
+name: byebye
+description: "Bye Bye Diabetes — onboarding to risk. Screens 01–09."
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # Material's own strings (selection handles, dialogs) in Bangla. Without
+  # these delegates MaterialApp resolves to `bn`, finds no MaterialLocalizations
+  # for it, and every TextField throws.
+  flutter_localizations:
+    sdk: flutter
+  http: ^1.2.2
+  shared_preferences: ^2.3.3
+  flutter_secure_storage: ^9.2.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+
+  fonts:
+    # Headings only, weight 400 only — per design-tokens.json.
+    - family: Caprasimo
+      fonts:
+        - asset: assets/fonts/Caprasimo-Regular.ttf
+
+    # Variable fonts. Flutter maps FontWeight onto the `wght` axis, and
+    # AppText also sets fontVariations explicitly so the axis is driven on
+    # every platform rather than relying on synthetic bold.
+    - family: Figtree
+      fonts:
+        - asset: assets/fonts/Figtree-Variable.ttf
+
+    - family: NotoSansBengali
+      fonts:
+        - asset: assets/fonts/NotoSansBengali-Variable.ttf

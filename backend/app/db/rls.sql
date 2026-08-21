@@ -212,10 +212,18 @@ $$;
 
 -- ── health tables ────────────────────────────────────────────────────
 
+-- Every table below carries a profile_id column directly, including
+-- meal_log_items — which denormalises it precisely so its policy reads its own
+-- column instead of joining meal_logs and inheriting that table's policy.
+
 DO $$
 DECLARE t text;
 BEGIN
-  FOREACH t IN ARRAY ARRAY['health_profiles', 'risk_assessments', 'vital_logs', 'safety_events']
+  FOREACH t IN ARRAY ARRAY[
+    'health_profiles', 'risk_assessments', 'vital_logs', 'safety_events',
+    'meal_logs', 'meal_log_items', 'daily_checkins', 'activity_logs',
+    'coach_messages', 'reports'
+  ]
   LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t);
@@ -232,6 +240,14 @@ BEGIN
       t || '_write', t);
   END LOOP;
 END $$;
+
+-- ── food_items: reference data, deliberately not RLS-protected ───────
+-- It has no profile_id and contains nobody's health information — it is a
+-- composition table, the same for every user. Enabling FORCE RLS here would
+-- only mean the seeder could not write it either. The API exposes no write
+-- path to this table; that is where the restriction lives.
+
+REVOKE INSERT, UPDATE, DELETE ON food_items FROM PUBLIC;
 
 -- ── audit log: append-only ───────────────────────────────────────────
 -- Deliberately NOT covered by the loop above. An audit trail the application

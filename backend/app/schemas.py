@@ -9,7 +9,7 @@ so drift fails CI rather than shipping.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
@@ -264,3 +264,309 @@ class SafetyCardOut(BaseModel):
     body: str
     actions: list[str]
     emergency_number: str | None = None
+
+
+# ── food and meals ────────────────────────────────────────────────────
+
+MealSlot = Literal["breakfast", "lunch", "snack", "dinner", "sehri", "iftar"]
+
+
+class FoodOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name_en: str
+    name_local: str | None
+    kcal_per_100g: float
+    carbs_g_per_100g: float
+    protein_g_per_100g: float
+    fat_g_per_100g: float
+    fibre_g_per_100g: float
+    glycemic_index: float | None
+    portion_grams: dict[str, float]
+    # 'placeholder' means the value is a widely-published approximation, not a
+    # licensed composition table. The UI must not present it as authoritative.
+    source: str
+
+
+class MealItemIn(BaseModel):
+    """One confirmed item. The user always confirms — the AI only proposes."""
+
+    food_id: uuid.UUID | None = None
+    name: str = Field(min_length=1, max_length=160)
+    quantity: float = Field(default=1, gt=0, le=100)
+    unit: str = Field(default="serving", max_length=24)
+    # Supplied only when the client already knows the weight. Otherwise the
+    # server converts from the local unit using the food's own portion table.
+    grams: float | None = Field(default=None, gt=0, le=5000)
+    recognition_confidence: float | None = Field(default=None, ge=0, le=1)
+
+
+class MealItemOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name_snapshot: str
+    quantity: float
+    unit: str
+    grams: float
+    kcal: float
+    carbs_g: float
+    protein_g: float
+    fat_g: float
+    fibre_g: float
+    glycemic_load: float | None
+    recognition_confidence: float | None
+
+
+class MealIn(BaseModel):
+    profile_id: uuid.UUID
+    slot: MealSlot
+    items: list[MealItemIn] = Field(min_length=1, max_length=40)
+    eaten_at: datetime | None = None
+    note: str | None = Field(default=None, max_length=2000)
+    entry_method: Literal["manual", "photo"] = "manual"
+
+
+class MealOut(BaseModel):
+    id: uuid.UUID
+    slot: str
+    eaten_at: datetime
+    eaten_on: date
+    entry_method: str
+    note: str | None
+    items: list[MealItemOut]
+    kcal: float
+    carbs_g: float
+    protein_g: float
+    fat_g: float
+    fibre_g: float
+    glycemic_load: float | None
+    # Calories are always shown as a range with an "estimate" label — a photo
+    # of a plate of rice is not known to the calorie.
+    kcal_low: int
+    kcal_high: int
+
+
+class DayTotals(BaseModel):
+    kcal: float
+    carbs_g: float
+    protein_g: float
+    fat_g: float
+    fibre_g: float
+    glycemic_load: float | None
+    kcal_low: int
+    kcal_high: int
+
+
+class TargetOut(BaseModel):
+    kcal: int
+    carbs_g: int
+    protein_g: int
+    fat_g: int
+    fibre_g: int
+    glycemic_load_ceiling: int
+    maintenance_kcal: int
+    # True when the §5.4 rails moved the number. Surfaced so the UI can explain
+    # itself rather than silently showing a different figure than was asked for.
+    was_clamped: bool
+    clamp_reason: str | None
+    weight_loss_disabled: bool
+    notes: list[str]
+
+
+class PlanTodayOut(BaseModel):
+    """What the tracker screen needs in one call."""
+
+    # Named `day` rather than `date` so the field does not shadow the type it
+    # is annotated with.
+    day: date
+    target: TargetOut | None
+    totals: DayTotals
+    meals: list[MealOut]
+    # Present when the day's pattern tripped a §5.4 rail, e.g. repeated very
+    # low intake. Never gamified, never a failure state.
+    safety_card: SafetyCardOut | None = None
+
+
+class RecognizedItem(BaseModel):
+    name: str
+    confidence: float
+    suggested_quantity: float
+    suggested_unit: str
+    food_id: uuid.UUID | None = None
+
+
+class RecognizeOut(BaseModel):
+    """Proposals only. Nothing is saved until the user confirms."""
+
+    items: list[RecognizedItem]
+    # False in this build — there is no recognition model wired. The client
+    # must say so rather than implying a photo was understood.
+    model_available: bool
+    message: str
+    confidence_floor: float
+
+
+# ── check-ins ─────────────────────────────────────────────────────────
+
+class CheckinIn(BaseModel):
+    profile_id: uuid.UUID
+    energy: int | None = Field(default=None, ge=1, le=5)
+    sleep_hours: float | None = Field(default=None, ge=0, le=24)
+    mood: int | None = Field(default=None, ge=1, le=5)
+    symptoms: list[str] = Field(default_factory=list, max_length=20)
+    note: str | None = Field(default=None, max_length=2000)
+    checkin_on: date | None = None
+
+
+class CheckinOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    checkin_on: date
+    energy: int | None
+    sleep_hours: float | None
+    mood: int | None
+    symptoms: list[str]
+    note: str | None
+    updated_at: datetime
+
+
+# ── activity ──────────────────────────────────────────────────────────
+
+class ActivityIn(BaseModel):
+    profile_id: uuid.UUID
+    activity_on: date | None = None
+    steps: int = Field(default=0, ge=0, le=200_000)
+    active_minutes: int = Field(default=0, ge=0, le=1440)
+    distance_km: float | None = Field(default=None, ge=0, le=500)
+    source: Literal["manual", "healthkit", "health_connect"] = "manual"
+
+
+class ActivityOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    activity_on: date
+    steps: int
+    active_minutes: int
+    distance_km: float | None
+    source: str
+    updated_at: datetime
+
+
+# ── coach ─────────────────────────────────────────────────────────────
+
+class CoachIn(BaseModel):
+    profile_id: uuid.UUID
+    message: str = Field(min_length=1, max_length=2000)
+
+
+class CoachOut(BaseModel):
+    reply: str
+    # True when a guard answered instead of the responder — a red flag,
+    # a medication question, or the diagnosis question.
+    intercepted: bool
+    # What the answer was built from. An answer the user cannot check is an
+    # assertion, not an answer.
+    cited: list[str]
+    questions_remaining: int | None
+    safety_card: SafetyCardOut | None = None
+    # There is no language model behind this build. Stated in the payload so a
+    # client cannot quietly present it as one.
+    model_backed: bool = False
+
+
+class CoachTurn(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    role: str
+    body: str
+    intercepted: bool
+    created_at: datetime
+
+
+# ── insights and reports ──────────────────────────────────────────────
+
+class InsightOut(BaseModel):
+    key: str
+    headline: str
+    detail: str
+    observations: int
+    direction: str
+
+
+class WeeklyInsightsOut(BaseModel):
+    period_start: date
+    period_end: date
+    insights: list[InsightOut]
+    insufficient_data: bool
+    minimum_observations: int
+
+
+class ReportIn(BaseModel):
+    profile_id: uuid.UUID
+    days: int = Field(default=28, ge=7, le=180)
+
+
+class ReportOut(BaseModel):
+    id: uuid.UUID
+    generated_at: datetime
+    period_start: date
+    period_end: date
+    payload: dict
+
+
+# ── billing ───────────────────────────────────────────────────────────
+
+class PlanOut(BaseModel):
+    code: str
+    name: str
+    price_minor: int
+    currency: str
+    period: str
+    trial_days: int
+    rails: list[str]
+
+
+class PlansOut(BaseModel):
+    plans: list[PlanOut]
+    # Never gated, on any tier. Listed in the payload so the paywall screen
+    # cannot accidentally imply otherwise.
+    #
+    # `free_forever_keys` is what a client should render from — the server
+    # decides what is free, the client owns the wording in the user's language.
+    # `free_forever` carries the English as a fallback for an older client that
+    # meets a key it does not know.
+    free_forever: list[str]
+    free_forever_keys: list[str] = []
+    current_status: str
+
+
+class SubscribeIn(BaseModel):
+    plan_code: str
+
+
+# ── account preferences ───────────────────────────────────────────────
+
+class PreferencesIn(BaseModel):
+    locale: str | None = Field(default=None, max_length=8)
+    units_prefs: dict | None = None
+
+
+class ExportOut(BaseModel):
+    """Everything this account holds. Free on every tier — a legal requirement,
+    not a feature."""
+
+    generated_at: datetime
+    account: dict
+    profiles: list[dict]
+    consents: list[dict]
+    health_profiles: list[dict]
+    risk_assessments: list[dict]
+    vitals: list[dict]
+    meals: list[dict]
+    checkins: list[dict]
+    activity: list[dict]

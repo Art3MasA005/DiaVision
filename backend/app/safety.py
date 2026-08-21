@@ -178,7 +178,7 @@ def check_profile(age: int | None = None, pregnant: bool = False,
             trigger="under_18",
             severity=Severity.URGENT,
             title="This app is for adults",
-            body=("Bye Bye Diabetes is designed for people aged 18 and over. "
+            body=("DiaVision is designed for people aged 18 and over. "
                   "Please speak to a doctor about health questions."),
             actions=["Find a doctor"],
         )
@@ -229,10 +229,21 @@ def clamp_calorie_target(requested_kcal: float, sex: str, tdee: float,
     floor = ABSOLUTE["min_kcal_female"] if sex == "female" else ABSOLUTE["min_kcal_male"]
 
     if bmi is not None and bmi < ABSOLUTE["bmi_floor_weight_loss"]:
+        # Weight loss is off — but the absolute floor still applies. A small,
+        # elderly, sedentary person can have a maintenance TDEE *below* the
+        # floor (38kg at 145cm computes to about 930 kcal), and returning that
+        # untouched would hand the most underweight users the lowest target in
+        # the app. The floor is the safe direction here: someone below a
+        # healthy BMI should not be eating at a computed minimum.
+        target = max(float(tdee), float(floor))
+        reason = (f"BMI {bmi:.1f} is below {ABSOLUTE['bmi_floor_weight_loss']}. "
+                  f"Weight loss is disabled; target set to maintenance.")
+        if target > tdee:
+            reason += (f" Raised to the {floor} kcal/day floor for {sex}, which is "
+                       f"above maintenance for this body size.")
         return CalorieTarget(
-            kcal=int(round(tdee)), was_clamped=True, weight_loss_disabled=True,
-            reason=(f"BMI {bmi:.1f} is below {ABSOLUTE['bmi_floor_weight_loss']}. "
-                    f"Weight loss is disabled; target set to maintenance."),
+            kcal=int(round(target)), was_clamped=True, weight_loss_disabled=True,
+            reason=reason,
         )
 
     target = float(requested_kcal)

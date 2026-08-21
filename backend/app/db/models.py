@@ -403,9 +403,290 @@ class SafetyEvent(Base):
     )
 
 
+# ──────────────────────────────────────────────────────────────────────
+# Food and meals — PRD §F3, §F4
+# ──────────────────────────────────────────────────────────────────────
+
+class FoodItem(Base):
+    """A food in the composition table. REFERENCE DATA — not profile-scoped.
+
+    Deliberately carries its own provenance. `packs/bd.json` records the
+    Bangladesh food composition table as `permission_pending`, so nothing from
+    that source is in here: the seeded rows are widely-published approximate
+    values marked `source='placeholder'`, and the API reports that honestly
+    rather than implying a licensed database exists.
+
+    Per-100g, always. Portion conversion happens at the meal-item level, where
+    the local unit is known — a বাটি of ভাত is not a বাটি of ডাল.
+    """
+
+    __tablename__ = "food_items"
+
+    id: Mapped[uuid.UUID] = _pk()
+    region: Mapped[str] = mapped_column(String(2), default="bd", nullable=False, index=True)
+
+    name_en: Mapped[str] = mapped_column(String(160), nullable=False)
+    name_local: Mapped[str | None] = mapped_column(String(160))
+
+    kcal_per_100g: Mapped[float] = mapped_column(Float, nullable=False)
+    carbs_g_per_100g: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    protein_g_per_100g: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    fat_g_per_100g: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    fibre_g_per_100g: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+
+    # Glycemic index, 0–110. Null means unknown, and glycemic load is then not
+    # computed rather than guessed — a fabricated GL is worse than no GL.
+    glycemic_index: Mapped[float | None] = mapped_column(Float)
+
+    # Grams for one of the region's local portion units, keyed by unit_en.
+    portion_grams: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
+    source: Mapped[str] = mapped_column(String(32), default="placeholder", nullable=False)
+    created_at: Mapped[datetime] = _now()
+
+    __table_args__ = (
+        CheckConstraint("kcal_per_100g BETWEEN 0 AND 900", name="ck_food_kcal"),
+        CheckConstraint("glycemic_index IS NULL OR glycemic_index BETWEEN 0 AND 110",
+                        name="ck_food_gi"),
+        CheckConstraint("source IN ('placeholder','licensed','user')", name="ck_food_source"),
+        Index("ix_food_region_name", "region", "name_en"),
+    )
+
+
+class MealLog(Base):
+    """One eating occasion. Slots come from the region pack, never hard-coded."""
+
+    __tablename__ = "meal_logs"
+
+    id: Mapped[uuid.UUID] = _pk()
+    profile_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    eaten_at: Mapped[datetime] = _now()
+    # Stored separately from eaten_at so a day's totals do not shift when the
+    # user travels across a timezone.
+    eaten_on: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    slot: Mapped[str] = mapped_column(String(16), nullable=False)
+
+    note: Mapped[str | None] = mapped_column(Text)
+
+    # 'manual' | 'photo'. Photo means the items were PROPOSED by recognition
+    # and then confirmed by the user — the human always disposes (PRD §F3).
+    entry_method: Mapped[str] = mapped_column(String(16), default="manual", nullable=False)
+
+    created_at: Mapped[datetime] = _now()
+
+    items: Mapped[list["MealLogItem"]] = relationship(
+        back_populates="meal", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        CheckConstraint("entry_method IN ('manual','photo')", name="ck_meal_entry_method"),
+        Index("ix_meal_profile_day", "profile_id", "eaten_on"),
+    )
+
+
+class MealLogItem(Base):
+    """One food in one meal, with the portion the user actually confirmed.
+
+    Nutrition is denormalised onto the row at save time. A food's composition
+    row may later be corrected, and a past meal must not silently change its
+    calories underneath the user.
+    """
+
+    __tablename__ = "meal_log_items"
+
+    id: Mapped[uuid.UUID] = _pk()
+    meal_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("meal_logs.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    # Denormalised so RLS can filter items without joining meal_logs, which
+    # would make the item policy depend on the meal policy.
+    profile_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    food_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("food_items.id", ondelete="SET NULL")
+    )
+
+    name_snapshot: Mapped[str] = mapped_column(String(160), nullable=False)
+    quantity: Mapped[float] = mapped_column(Float, default=1, nullable=False)
+    unit: Mapped[str] = mapped_column(String(24), default="serving", nullable=False)
+    grams: Mapped[float] = mapped_column(Float, nullable=False)
+
+    kcal: Mapped[float] = mapped_column(Float, nullable=False)
+    carbs_g: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    protein_g: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    fat_g: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    fibre_g: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    glycemic_load: Mapped[float | None] = mapped_column(Float)
+
+    # 0–1 when the item came from photo recognition. Null for manual entry.
+    # Below the confidence floor the client must make the user type the portion.
+    recognition_confidence: Mapped[float | None] = mapped_column(Float)
+
+    meal: Mapped[MealLog] = relationship(back_populates="items")
+
+    __table_args__ = (
+        CheckConstraint("grams > 0 AND grams <= 5000", name="ck_item_grams"),
+        CheckConstraint("recognition_confidence IS NULL OR "
+                        "recognition_confidence BETWEEN 0 AND 1",
+                        name="ck_item_confidence"),
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Check-ins and activity — PRD §F6, §F14
+# ──────────────────────────────────────────────────────────────────────
+
+class DailyCheckin(Base):
+    """The ≤30-second daily check-in (PRD §F14.1).
+
+    One row per profile per day; submitting again updates it, because a
+    check-in is a statement about a day rather than an event in it.
+    """
+
+    __tablename__ = "daily_checkins"
+
+    id: Mapped[uuid.UUID] = _pk()
+    profile_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    checkin_on: Mapped[date] = mapped_column(Date, nullable=False)
+
+    energy: Mapped[int | None] = mapped_column(Integer)
+    sleep_hours: Mapped[float | None] = mapped_column(Float)
+    mood: Mapped[int | None] = mapped_column(Integer)
+
+    # Free-form list; the interceptor reads it. Kept as text rather than an
+    # enum so a region pack can add locally-worded symptoms without a migration.
+    symptoms: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text)
+
+    created_at: Mapped[datetime] = _now()
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint("energy IS NULL OR energy BETWEEN 1 AND 5", name="ck_checkin_energy"),
+        CheckConstraint("mood IS NULL OR mood BETWEEN 1 AND 5", name="ck_checkin_mood"),
+        CheckConstraint("sleep_hours IS NULL OR sleep_hours BETWEEN 0 AND 24",
+                        name="ck_checkin_sleep"),
+        UniqueConstraint("profile_id", "checkin_on", name="uq_checkin_profile_day"),
+    )
+
+
+class ActivityLog(Base):
+    """Steps and active minutes for one day.
+
+    Upserted per day rather than appended: a health platform reports a running
+    total, and appending would count the same steps repeatedly.
+    """
+
+    __tablename__ = "activity_logs"
+
+    id: Mapped[uuid.UUID] = _pk()
+    profile_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    activity_on: Mapped[date] = mapped_column(Date, nullable=False)
+
+    steps: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    active_minutes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    distance_km: Mapped[float | None] = mapped_column(Float)
+
+    # 'manual' | 'healthkit' | 'health_connect'. Recorded because a reconciled
+    # platform figure and a typed one deserve different trust.
+    source: Mapped[str] = mapped_column(String(24), default="manual", nullable=False)
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint("steps BETWEEN 0 AND 200000", name="ck_activity_steps"),
+        CheckConstraint("active_minutes BETWEEN 0 AND 1440", name="ck_activity_minutes"),
+        UniqueConstraint("profile_id", "activity_on", name="uq_activity_profile_day"),
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Coach and reports — PRD §F8, §F9, §F10
+# ──────────────────────────────────────────────────────────────────────
+
+class CoachMessage(Base):
+    """One turn of the guarded coach thread.
+
+    Stored so the free-tier daily cap can be counted and so a safety
+    interception is auditable. `intercepted` marks a turn the red-flag checker
+    answered instead of the responder.
+    """
+
+    __tablename__ = "coach_messages"
+
+    id: Mapped[uuid.UUID] = _pk()
+    profile_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = _now()
+    role: Mapped[str] = mapped_column(String(12), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    intercepted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("role IN ('user','coach')", name="ck_coach_role"),
+        Index("ix_coach_profile_time", "profile_id", "created_at"),
+    )
+
+
+class Report(Base):
+    """A generated clinician-facing summary (PRD §F9).
+
+    The payload is stored rather than regenerated on read, so the thing a
+    patient handed their doctor last week still says what it said last week.
+    """
+
+    __tablename__ = "reports"
+
+    id: Mapped[uuid.UUID] = _pk()
+    profile_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    generated_at: Mapped[datetime] = _now()
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)
+    payload_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
+    # Share links expire (PRD §F9). Null means never shared.
+    share_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint("period_end >= period_start", name="ck_report_period"),
+        Index("ix_report_profile_time", "profile_id", "generated_at"),
+    )
+
+
+# Free-tier coach questions per day (PRD §F10, §F16). Premium removes the cap.
+COACH_FREE_DAILY_LIMIT = 3
+
+# Below this, photo recognition must not pre-fill a portion — the user types it.
+RECOGNITION_CONFIDENCE_FLOOR = 0.55
+
+
 # Every table carrying health data. rls.sql enables row-level security on each,
 # and a test asserts this list matches what the database actually reports — so
 # adding a table without a policy fails CI rather than leaking in production.
+#
+# `food_items` is deliberately absent: it is reference data with no profile
+# column, readable by everyone and writable by nobody through the API.
 PROFILE_SCOPED_TABLES = [
     "profiles",
     "profile_memberships",
@@ -414,4 +695,10 @@ PROFILE_SCOPED_TABLES = [
     "vital_logs",
     "access_audit_log",
     "safety_events",
+    "meal_logs",
+    "meal_log_items",
+    "daily_checkins",
+    "activity_logs",
+    "coach_messages",
+    "reports",
 ]

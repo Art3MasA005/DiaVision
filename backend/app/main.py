@@ -29,7 +29,7 @@ says so in the response.
 """
 
 app = FastAPI(
-    title="Bye Bye Diabetes API",
+    title="DiaVision API",
     description=DESCRIPTION,
     version="0.1.0",
     docs_url="/docs",
