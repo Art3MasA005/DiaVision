@@ -1,4 +1,4 @@
-/// The HTTP client for the Bye Bye Diabetes API.
+/// The HTTP client for the DiaVision API.
 ///
 /// Three responses are BRANCHES, not errors. The handoff is explicit about
 /// this, and treating them as failures would put a user in a dead end:

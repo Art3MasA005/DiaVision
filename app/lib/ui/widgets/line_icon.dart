@@ -1,5 +1,5 @@
 /// Lucide-style line icons, drawn from the same SVG path data the design
-/// prototype uses (`RAW` in `ByeByeDiabetes App.dc.html`).
+/// prototype uses (`RAW` in `DiaVision App.dc.html`).
 ///
 /// Drawn rather than shipped as a font: an icon font cannot be mirrored per
 /// glyph under RTL, and the handoff needs directional glyphs to flip while

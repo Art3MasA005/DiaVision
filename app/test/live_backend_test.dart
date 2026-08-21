@@ -1,6 +1,6 @@
 /// Drives the real [Api] class against a running backend.
 ///
-///   $env:PYTHONPATH="E:\Bye Bye Diabetes\backend"
+///   $env:PYTHONPATH="$PWD\backend"
 ///   .\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend
 ///   cd app; flutter test test/live_backend_test.dart
 ///

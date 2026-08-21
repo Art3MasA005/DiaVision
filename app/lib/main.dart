@@ -1,4 +1,4 @@
-/// Bye Bye Diabetes — onboarding to risk.
+/// DiaVision — onboarding to risk.
 ///
 /// Scope is the design handoff's screens 01–09: splash, auth, the blocking
 /// disclaimer, the eleven-question wizard, population guidelines, calculating,
@@ -72,7 +72,7 @@ class ByeByeApp extends StatelessWidget {
                     systemNavigationBarColor: colors.bg),
           );
           return MaterialApp(
-            title: 'Bye Bye Diabetes',
+            title: 'DiaVision',
             debugShowCheckedModeBanner: false,
             theme: materialTheme(colors),
             // Bangla and English are both first-class. Direction comes from

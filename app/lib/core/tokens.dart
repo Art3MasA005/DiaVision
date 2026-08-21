@@ -1,5 +1,5 @@
 /// Design tokens, ported from
-/// `design_handoff/design_handoff_byebyediabetes/design-tokens.json`.
+/// `design_handoff/diavision/design-tokens.json`.
 ///
 /// PALETTE DECISION: the handoff's Organic terracotta-and-sand system wins over
 /// the deep teal proposed in `docs/ui_spec.md` §6. The handoff README flags the

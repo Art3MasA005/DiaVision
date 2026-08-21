@@ -450,7 +450,7 @@ class _En extends Strings {
   String get lang => 'en';
 
   @override
-  String get appName => 'Bye Bye Diabetes';
+  String get appName => 'DiaVision';
   @override
   String get back => 'Back';
   @override
@@ -542,7 +542,7 @@ class _En extends Strings {
   String get disclaimerHead => 'Before we ask anything about your health';
   @override
   String get disclaimerBody =>
-      'Bye Bye Diabetes gives lifestyle and risk information. It is not a '
+      'DiaVision gives lifestyle and risk information. It is not a '
       'medical device and does not diagnose or treat any condition. Its '
       'estimates can be wrong. Always talk to a registered doctor before '
       'changing your diet, exercise, or any medication. If you take insulin or '
@@ -1360,7 +1360,7 @@ class _Bn extends Strings {
   String get lang => 'bn';
 
   @override
-  String get appName => 'বাই বাই ডায়াবেটিস';
+  String get appName => 'ডায়াভিশন';
   @override
   String get back => 'পেছনে';
   @override
@@ -1453,7 +1453,7 @@ class _Bn extends Strings {
   /// (SAFETY) Verbatim from the design prototype. Clinician review pending.
   @override
   String get disclaimerBody =>
-      'বাই বাই ডায়াবেটিস জীবনযাপন ও ঝুঁকি সম্পর্কিত তথ্য দেয়। এটি কোনো মেডিকেল '
+      'ডায়াভিশন জীবনযাপন ও ঝুঁকি সম্পর্কিত তথ্য দেয়। এটি কোনো মেডিকেল '
       'ডিভাইস নয় এবং কোনো রোগ নির্ণয় বা চিকিৎসা করে না। এর অনুমান ভুল হতে পারে। '
       'খাদ্যাভ্যাস, ব্যায়াম বা ওষুধ বদলানোর আগে সবসময় নিবন্ধিত ডাক্তারের সাথে '
       'কথা বলুন। আপনি ইনসুলিন বা ডায়াবেটিসের ওষুধ নিলে, এই অ্যাপ দেখে ডোজ '

@@ -7,7 +7,7 @@ reports and billing — was added alongside them (migration `0003`).
 
 ```powershell
 # backend, in one terminal
-$env:PYTHONPATH="E:\Bye Bye Diabetes\backend"
+$env:PYTHONPATH="$PWD\backend"
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --app-dir backend
 
 # app, in another
