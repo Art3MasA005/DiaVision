@@ -1,0 +1,9 @@
+# Keep language statistics focused on hand-written source.
+app/android/** linguist-vendored
+app/ios/** linguist-vendored
+app/linux/** linguist-vendored
+app/macos/** linguist-vendored
+app/windows/** linguist-vendored
+app/web/** linguist-vendored
+design_handoff/** linguist-documentation
+**/build/** linguist-generated
