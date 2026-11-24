@@ -582,7 +582,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 border: c.accentRamp.c200,
                 kicker: s.homeRiskBandChip,
                 kickerColor: c.accentRamp.c700,
-                value: result.bandLabel,
+                // Localised like the risk screen: the server's label is
+                // English, and this is the largest text on the card.
+                value: switch (result.band.toLowerCase()) {
+                  'low' => s.riskBandLow,
+                  'moderate' => s.riskBandModerate,
+                  'high' => s.riskBandHigh,
+                  'very_high' || 'very high' => s.riskBandVeryHigh,
+                  _ => result.bandLabel,
+                },
                 valueColor: c.accentRamp.c900,
                 // Rule 1: the range travels with the band, never a bare number.
                 foot: n.range(result.rangeLow, result.rangeHigh),
