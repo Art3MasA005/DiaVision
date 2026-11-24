@@ -1,4 +1,4 @@
-/// 10 · Calorie tracker.
+/// 10 · Calories & carbs (the tracker).
 ///
 /// Dual ring — calories outside against the target, carbohydrate inside
 /// against its goal — then macros computed from the log, a glycemic-load bar

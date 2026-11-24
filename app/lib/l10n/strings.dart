@@ -1240,7 +1240,7 @@ class _En extends Strings {
       };
 
   @override
-  String get trackerHead => 'Calorie tracker';
+  String get trackerHead => 'Calories & carbs';
   @override
   String get trackerRemaining => 'remaining';
   @override
@@ -2531,7 +2531,7 @@ class _Bn extends Strings {
       };
 
   @override
-  String get trackerHead => 'ক্যালরি ট্র্যাকার';
+  String get trackerHead => 'ক্যালরি ও শর্করা';
   @override
   String get trackerRemaining => 'বাকি';
   @override

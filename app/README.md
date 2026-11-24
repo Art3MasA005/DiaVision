@@ -40,7 +40,7 @@ flutter run --dart-define=API_BASE_URL=http://192.168.1.20:8000/api/v1
 | 07 | Risk result + what-if | [risk_screen.dart](lib/ui/screens/risk_screen.dart) |
 | 08 | Lab values (Tier 2) | [labs_screen.dart](lib/ui/screens/labs_screen.dart) |
 | 09 | Home / My plan | [home_screen.dart](lib/ui/screens/home_screen.dart) |
-| 10 | Calorie tracker | [tracker_screen.dart](lib/ui/screens/tracker_screen.dart) |
+| 10 | Calories & carbs (tracker) | [tracker_screen.dart](lib/ui/screens/tracker_screen.dart) |
 | 11 | Camera meal review | [scan_screen.dart](lib/ui/screens/scan_screen.dart) |
 | 12 | Daily check-in | [checkin_screen.dart](lib/ui/screens/checkin_screen.dart) |
 | 13 | Activity | [activity_screen.dart](lib/ui/screens/activity_screen.dart) |
