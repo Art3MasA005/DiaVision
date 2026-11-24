@@ -93,8 +93,8 @@
 
   "features": {
     "clinician_mode_enabled": false,
-    "camera_food_logging": false,
-    "ai_coach": false,
+    "camera_food_logging": true,
+    "ai_coach": true,
     "multi_profile": false,
     "$note": "All false for the Stage 4 vertical slice. Flags exist now so enabling them later is config, not a release branch."
   },

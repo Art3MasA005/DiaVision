@@ -187,21 +187,27 @@ full of affordances that lead nowhere is worse than a small one.
 Three features in the design have no real implementation available, and each
 one says so on screen rather than pretending:
 
-**Photo food recognition (screen 11).** No model is wired, and `packs/bd.json`
-ships `camera_food_logging: false`. `POST /food/recognize` returns an empty
-proposal list with `model_available: false`, and the screen falls back to
-search and manual portions. Inventing food items on a blood-sugar app is not a
-cosmetic shortcut — it would put wrong carbohydrate figures in front of someone
-managing their glucose. The endpoint exists now so the contract, the confidence
-floor and the confirm-before-save flow are settled before a model arrives.
+**Photo food recognition (screen 11).** Start → camera → analysing → review.
+The photo goes to `POST /food/recognize`, which asks `qwen/qwen3.7-flash` on
+OpenRouter what is on the plate. The model matches each item to the food table
+where it can (then the table's composition and glycemic index are used) and
+otherwise gives its own per-100 g estimate, marked "AI estimate", with no
+glycemic load. Every item, portion and unit is editable before saving, items
+below the confidence floor are flagged until the user touches them, and the
+meal is shown as a ±24% range. The first scan asks permission before any photo
+leaves the phone, and the server does not store the photo. With no model
+reachable the screen falls back to search and manual portions.
 
-**The coach (screen 15).** There is no language model behind it. It answers
-from the user's own logged figures using fixed wording, `model_backed: false`
-comes back in every response, and the screen carries a banner saying so. What
-*is* real is the guard chain, and that is the part worth building first: red
-flags run before any responder sees the message; medication and dose questions
-are deflected to a doctor; "do I have diabetes?" is refused outright. When a
-model is added it slots in behind `coach.respond()` and the guards do not move.
+**The coach (screen 15).** Backed by the same model. The server builds a
+snapshot of the profile's own data (`backend/app/services/user_snapshot.py`:
+health profile, risk estimate and history, labs and vitals, seven days of
+meals, check-ins, activity, the last few turns of the chat) and hands it to the
+model, so the user never types their numbers in. The guard chain still runs
+first: red flags before the model sees the message, medication and dose
+questions deflected to a doctor, "do I have diabetes?" refused outright, and a
+reply containing a drug dose is replaced. With no key or OpenRouter down, it
+falls back to fixed wording from the user's figures and `model_backed: false`
+switches the banner to say so.
 
 **Payment (screen 17).** No rail is connected. `POST /billing/subscribe` moves
 the account to `trial` so the entitlement path is exercisable end to end; it
@@ -286,29 +292,17 @@ the lowest target in the app.
 
 ## Gaps found, that are not in the app to fix
 
-### 1. `ancestry_cutoff_group` is not wired through the backend
+### 1. `ancestry_cutoff_group`: closed
 
-The ML layer supports it — `ml/pipelines/predict.py:226` reads
-`record.get("ancestry_cutoff_group")` and `clinical_scores.py:445` applies
-`ANCESTRY_SCORE` ahead of the region table. There are passing tests for it in
-`ml/tests/test_predict.py`.
-
-But the API layer has no such field:
-
-- `backend/app/schemas.py` `HealthProfileIn` does not declare it
-- `backend/app/db/models.py` `HealthProfile` has no column for it
-- `backend/app/services/risk.py` `health_profile_to_record()` does not pass it
-
-So **the diaspora fix is currently unreachable from the app.** A Bangladeshi in
-London still gets scored on their region pack rather than their declared
-cutoff group. Screen 05 collects the answer, the client sends it (extra fields
-are ignored by Pydantic, so it is forward-compatible), and it is held in prefs
-— but nothing downstream reads it yet.
-
-Closing it needs three small changes plus a migration: a nullable
-`ancestry_cutoff_group` column, the field on `HealthProfileIn`, and one line in
-`health_profile_to_record`. That is a backend change, so it is flagged here
-rather than done unasked.
+The ML layer always supported it (`ml/pipelines/predict.py` reads it and
+`clinical_scores.py` applies `ANCESTRY_SCORE` ahead of the region table), but
+the API dropped it, so the diaspora fix was unreachable from the app. Migration
+0005 closes that: a nullable, checked `health_profiles.ancestry_cutoff_group`
+column, the field on `HealthProfileIn` (an unknown value is a 422, not
+silently ignored), and `health_profile_to_record` passes it through.
+`backend/tests/test_password_reset.py` shows a user in the UK region scored on
+FINDRISC by default and on IDRS once they declare South Asian. Omitting it
+still scores on the region pack, as GDPR Art. 9 requires.
 
 ### 2. The risk model does not actually run on-device
 
@@ -368,8 +362,16 @@ Ten consecutive full-suite runs are clean where four in ten used to fail.
 
 ### 5. Not wired, and says so
 
-"Forgot password?" and "Find a doctor" have no backend behind them. Both toast
-rather than pretending to work.
+"Find a doctor" has no backend behind it and toasts rather than pretending
+to work.
+
+"Forgot password?" is real (`backend/app/api/password_reset.py`): a 6-digit
+code by email, 10 minutes to use it, 5 wrong tries pause reset for 30, one code
+per 60 seconds, and the same answer whether or not the address has an account.
+A successful reset stamps `accounts.tokens_valid_after`, which signs out every
+earlier session on every device, refresh tokens included. Email needs
+`SMTP_*` in `backend/.env`. Without it, development writes the code to the
+server log (marked DEV ONLY) and production answers 503 for every address.
 
 ---
 

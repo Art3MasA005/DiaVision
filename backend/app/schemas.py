@@ -18,6 +18,10 @@ Sex = Literal["male", "female"]
 FamilyHistory = Literal["none", "second_degree", "first_degree"]
 Activity = Literal["sedentary", "light", "moderate", "active", "very_active"]
 DiabetesStatus = Literal["no", "prediabetes", "t2d", "t1d", "gestational"]
+# Mirrors feature_spec.json `ancestry_cutoff_group`. Selects a published
+# cutoff set at the calibration layer; never a model feature.
+AncestryGroup = Literal["south_asian", "east_asian", "european", "african",
+                        "middle_eastern", "hispanic"]
 
 
 # ── auth ──────────────────────────────────────────────────────────────
@@ -48,6 +52,30 @@ class TokenResponse(BaseModel):
 
 class RefreshRequest(BaseModel):
     refresh_token: str
+
+
+class ResetRequestIn(BaseModel):
+    email: EmailStr
+
+
+class ResetRequestOut(BaseModel):
+    """The same body whether or not the email has an account."""
+    resend_after_seconds: int
+
+
+class ResetVerifyIn(BaseModel):
+    email: EmailStr
+    # ASCII or Bangla digits; the route normalises them.
+    code: str = Field(min_length=6, max_length=6)
+
+
+class ResetVerifyOut(BaseModel):
+    reset_token: str
+
+
+class ResetSetIn(BaseModel):
+    reset_token: str = Field(max_length=2048)
+    new_password: str = Field(min_length=8, max_length=72)
 
 
 # ── profiles ──────────────────────────────────────────────────────────
@@ -134,6 +162,10 @@ class HealthProfileIn(BaseModel):
     diabetes_status: DiabetesStatus = "no"
     conditions: list[str] = Field(default_factory=list)
     pregnant: bool = False
+
+    # Optional and user-declared, never inferred. Omitting it (or sending null)
+    # scores on the region pack, exactly as before.
+    ancestry_cutoff_group: AncestryGroup | None = None
 
     # Age is supplied directly rather than derived from a date of birth, so the
     # under-18 gate (PRD §3.3) can run before any health data is stored.
@@ -300,6 +332,14 @@ class MealItemIn(BaseModel):
     # server converts from the local unit using the food's own portion table.
     grams: float | None = Field(default=None, gt=0, le=5000)
     recognition_confidence: float | None = Field(default=None, ge=0, le=1)
+    # Composition for an item with no food-table row — the camera's own
+    # estimate for a dish the table does not carry. Ignored when `food_id` is
+    # set: the table's row always wins over an estimate.
+    kcal_per_100g: float | None = Field(default=None, ge=0, le=900)
+    carbs_g_per_100g: float | None = Field(default=None, ge=0, le=100)
+    protein_g_per_100g: float | None = Field(default=None, ge=0, le=100)
+    fat_g_per_100g: float | None = Field(default=None, ge=0, le=100)
+    fibre_g_per_100g: float | None = Field(default=None, ge=0, le=100)
 
 
 class MealItemOut(BaseModel):
@@ -373,6 +413,46 @@ class TargetOut(BaseModel):
     clamp_reason: str | None
     weight_loss_disabled: bool
     notes: list[str]
+    # The goal the user set in the goal sheet, or None for the computed one.
+    # `kcal` is what that request became after the §5.4 rails.
+    goal_kcal: int | None = None
+    goal_min_kcal: int = 1200
+    goal_max_kcal: int = 3500
+
+
+class WaterOut(BaseModel):
+    day: date
+    glasses: int
+    goal_glasses: int = 8
+    ml_per_glass: int = 250
+
+
+class WaterIn(BaseModel):
+    profile_id: uuid.UUID
+    day: date | None = None
+    glasses: int = Field(ge=0, le=30)
+
+
+class GoalIn(BaseModel):
+    """The goal sheet. None resets to the goal computed from the profile."""
+
+    profile_id: uuid.UUID
+    kcal: int | None = Field(default=None, ge=1200, le=3500)
+
+
+class MealItemPatch(BaseModel):
+    """± on a logged item. Nutrition is recomputed in proportion."""
+
+    quantity: float = Field(gt=0, le=100)
+
+
+class CopyMealsIn(BaseModel):
+    """'Same as yesterday': copy one day's meals (or one slot) onto another."""
+
+    profile_id: uuid.UUID
+    from_day: date
+    to_day: date
+    slot: MealSlot | None = None
 
 
 class PlanTodayOut(BaseModel):
@@ -387,25 +467,55 @@ class PlanTodayOut(BaseModel):
     # Present when the day's pattern tripped a §5.4 rail, e.g. repeated very
     # low intake. Never gamified, never a failure state.
     safety_card: SafetyCardOut | None = None
+    water: WaterOut | None = None
+
+
+class RecognizeIn(BaseModel):
+    """A plate photo. Base64, JPEG/PNG/WebP/HEIC. Analysed, never stored."""
+
+    # ~7.5 MB of image. The client downsizes to ~1280 px before sending.
+    image_base64: str = Field(min_length=100, max_length=10_000_000)
 
 
 class RecognizedItem(BaseModel):
     name: str
+    name_local: str | None = None
     confidence: float
     suggested_quantity: float
     suggested_unit: str
     food_id: uuid.UUID | None = None
+    # Estimated weight of the whole portion in the photo.
+    grams: float
+    # Where it is in the photo, [x, y, w, h] in 0–1 from the top-left.
+    box: list[float] | None = None
+    kcal_per_100g: float
+    carbs_g_per_100g: float
+    protein_g_per_100g: float
+    fat_g_per_100g: float
+    fibre_g_per_100g: float
+    glycemic_index: float | None = None
+    # 'table' = composition from the food table; 'ai_estimate' = the model's.
+    source: str
+    portion_grams: dict[str, float] = {}
+    # Below the confidence floor: the client asks the user to check it.
+    needs_review: bool = False
 
 
 class RecognizeOut(BaseModel):
     """Proposals only. Nothing is saved until the user confirms."""
 
     items: list[RecognizedItem]
-    # False in this build — there is no recognition model wired. The client
-    # must say so rather than implying a photo was understood.
+    # Whether a recognition model is reachable. False = the client falls back
+    # to search and says so, rather than implying a photo was understood.
     model_available: bool
     message: str
     confidence_floor: float
+    is_food: bool = True
+    # A spoon, hand or thumb was visible, so portions are better grounded.
+    scale_reference: bool = False
+    # The ± range for this estimate, as the server will store it.
+    kcal_low: int = 0
+    kcal_high: int = 0
 
 
 # ── check-ins ─────────────────────────────────────────────────────────

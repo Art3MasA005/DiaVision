@@ -330,6 +330,62 @@ abstract class Strings {
   String targetOf(String eaten, String target);
   String get trackerClampNote;
   String get trackerNextPortion;
+  // The redesigned tracker: day switcher, water, per-meal cards, goal sheet.
+  String get trPrevDay;
+  String get trNextDay;
+  String get trToday;
+  String get trYesterday;
+  String trDaysAgo(String n);
+  String trWeekday(int weekday);
+  String get trWater;
+  String trWaterSub(String n, String g, String ml);
+  String trGlass(String i);
+  String get trAddFood;
+  String get trScan;
+  String get trSame;
+  String get trNotLogged;
+  String get trRemove;
+  String get trLess;
+  String get trMore;
+  String get trOverGoal;
+  String get trLegendKcal;
+  String get trLegendCarb;
+  String trGlAim(String n);
+  String get trGlEmpty;
+  String get trGlLow;
+  String trGlNote(String slot);
+  String get trFoot;
+  String trSameToast(String slot);
+  String get trNothingToCopy;
+  String get trEditGoal;
+  // The Add meal sheet.
+  String get amHead;
+  String get amWhich;
+  String get amSearch;
+  String get amScan;
+  // The goal sheet.
+  String get goalHead;
+  String get goalNote;
+  String get goalSave;
+  String get goalToast;
+  String get goalLess;
+  String get goalMore;
+  String get goalReset;
+  String goalRaised(String kcal);
+  // 13 · Add food.
+  String addHead(String slot);
+  String get addSearch;
+  String get addPh;
+  List<String> get addTabs;
+  String get addNone;
+  String get addScan;
+  String get addFav;
+  String get addUnfav;
+  String addAdded(String food, String slot);
+  String get addEmptyFav;
+  String get addEmptyRecent;
+  String get addPortion;
+  String get addConfirm;
 
   // ── 11 scan ─────────────────────────────────────────────────────────
   String get scanHead;
@@ -344,6 +400,40 @@ abstract class Strings {
   String get scanSlot;
   String get scanPlaceholderNote;
   String get scanConfirmNote;
+  // The camera flow: start → camera → analysing → review.
+  String get scanStartHead;
+  String get scanStartSub;
+  String get scanScanBtn;
+  String get scanGallery;
+  String get scanSearchInstead;
+  String get scanTipsHead;
+  List<String> get scanTips;
+  String get scanPrivacy;
+  String get scanConsentHead;
+  String get scanConsentBody;
+  String get scanConsentAllow;
+  String get scanGuide;
+  String get scanClose;
+  String get scanShutter;
+  String get scanFlip;
+  String get scanFlash;
+  String get scanCameraUnavailable;
+  String get scanBusyHead;
+  List<String> get scanBusySteps;
+  String get scanBusyFoot;
+  String get scanReviewHead;
+  String get scanDetected;
+  String get scanRetake;
+  String get scanSpoonOk;
+  String get scanSpoonTip;
+  String get scanCheckThis;
+  String get scanAiEstimate;
+  String get scanAddItem;
+  String get scanNoFood;
+  String get scanFailed;
+  String get scanFoot;
+  String get scanPhotoLabel;
+  String scanUnit(String unit);
 
   // ── 12 check-in ─────────────────────────────────────────────────────
   String get checkinHead;
@@ -391,6 +481,8 @@ abstract class Strings {
   String get coachHead;
   String get coachPlaceholder;
   String get coachNotAModel;
+  String get coachAiBanner;
+  String get coachThinking;
   String coachRemaining(String n);
   String get coachLimitTitle;
   String get coachLimitBody;
@@ -458,6 +550,64 @@ abstract class Strings {
   String get settingsConsents;
   String get settingsConsentTerms;
   String get settingsConsentDisclaimer;
+
+  // ── 02b forgot password ─────────────────────────────────────────────
+  String get fpBack;
+  String fpStepLabel(String step, String total);
+  String get fp1Head;
+  String get fp1Sub;
+  String get fp1Cta;
+  String get fp1Note;
+  String get fp2Head;
+  String get fp2Sub;
+  String get fp2Change;
+  String get fp2Label;
+  String get fp2Resend;
+  String get fp2ResendBtn;
+  String get fp2Cta;
+  String get fp3Head;
+  String get fp3Sub;
+  String get fp3New;
+  String get fp3Confirm;
+  String get fp3Ph;
+  String get fp3Ph2;
+  String get fp3R1;
+  String get fp3R2;
+  String get fp3R3;
+  String get fp3Cta;
+  String get fp4Head;
+  String get fp4Sub;
+  String get fp4Cta;
+  String get fpToastEmail;
+  String get fpToastSent;
+  String get fpToastResent;
+  String get fpToastCode;
+  String get fpToastPass;
+  String get fpToastDone;
+  String get fpUnavailable;
+  String fpBadCode(String? left);
+  String get fpLocked;
+  String get fpExpired;
+  String fpResendIn(String seconds);
+
+  // ── 09b notifications ───────────────────────────────────────────────
+  String get nTitle;
+  String get nMarkAll;
+  String get nToday;
+  String get nEarlier;
+  String get nFilterAll;
+  String get nFilterReminders;
+  String get nFilterInsights;
+  String get nFilterAccount;
+  String get nEmptyHead;
+  String get nEmptySub;
+  String get nSettings;
+  String get nDismiss;
+  String nUnread(String n);
+  String get nNew;
+  String get nToastAll;
+  String get nPrivacy;
+
 }
 
 // ── English ───────────────────────────────────────────────────────────
@@ -469,7 +619,7 @@ class _En extends Strings {
   String get lang => 'en';
 
   @override
-  String get appName => 'DiaVision';
+  String get appName => 'Diavision';
   @override
   String get back => 'Back';
   @override
@@ -561,7 +711,7 @@ class _En extends Strings {
   String get disclaimerHead => 'Before we ask anything about your health';
   @override
   String get disclaimerBody =>
-      'DiaVision gives lifestyle and risk information. It is not a '
+      'Diavision gives lifestyle and risk information. It is not a '
       'medical device and does not diagnose or treat any condition. Its '
       'estimates can be wrong. Always talk to a registered doctor before '
       'changing your diet, exercise, or any medication. If you take insulin or '
@@ -1132,6 +1282,119 @@ class _En extends Strings {
       'usual next step.';
 
   @override
+  String get trPrevDay => 'Previous day';
+  @override
+  String get trNextDay => 'Next day';
+  @override
+  String get trToday => 'Today';
+  @override
+  String get trYesterday => 'Yesterday';
+  @override
+  String trDaysAgo(String n) => '$n days ago';
+  @override
+  String trWeekday(int weekday) =>
+      const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][(weekday - 1) % 7];
+  @override
+  String get trWater => 'Water';
+  @override
+  String trWaterSub(String n, String g, String ml) => '$n of $g glasses · $ml ml';
+  @override
+  String trGlass(String i) => 'Glass $i';
+  @override
+  String get trAddFood => 'Add food';
+  @override
+  String get trScan => 'Scan';
+  @override
+  String get trSame => 'Same as yesterday';
+  @override
+  String get trNotLogged => 'Not logged yet';
+  @override
+  String get trRemove => 'Remove';
+  @override
+  String get trLess => 'Less';
+  @override
+  String get trMore => 'More';
+  @override
+  String get trOverGoal => 'over today\'s goal';
+  @override
+  String get trLegendKcal => 'Calories';
+  @override
+  String get trLegendCarb => 'Carbs';
+  @override
+  String trGlAim(String n) => 'Aim to keep it under $n a day';
+  @override
+  String get trGlEmpty => 'Log a meal to see today\'s glycemic load.';
+  @override
+  String get trGlLow => 'A gentle day for your blood sugar so far.';
+  @override
+  String trGlNote(String slot) =>
+      '$slot drove most of today\'s load. Swapping half the rice for vegetables '
+      'is the easiest cut.';
+  @override
+  String get trFoot =>
+      'Calories and glycemic load are estimates from the food database, not '
+      'measurements.';
+  @override
+  String trSameToast(String slot) => 'Copied yesterday\'s $slot';
+  @override
+  String get trNothingToCopy => 'Nothing was logged for that meal yesterday.';
+  @override
+  String get trEditGoal => 'Change daily goal';
+  @override
+  String get amHead => 'Add a meal';
+  @override
+  String get amWhich => 'Which meal?';
+  @override
+  String get amSearch => 'Search food';
+  @override
+  String get amScan => 'Scan your plate';
+  @override
+  String get goalHead => 'Daily calorie goal';
+  @override
+  String get goalNote =>
+      'Set from your profile. Talk to your doctor before making a big change.';
+  @override
+  String get goalSave => 'Save goal';
+  @override
+  String get goalToast => 'Goal updated';
+  @override
+  String get goalLess => 'Lower goal';
+  @override
+  String get goalMore => 'Raise goal';
+  @override
+  String get goalReset => 'Use the goal from my profile';
+  @override
+  String goalRaised(String kcal) =>
+      'That is below the safe minimum for you, so today\'s target is $kcal kcal.';
+  @override
+  String addHead(String slot) => 'Add to $slot';
+  @override
+  String get addSearch => 'Search food';
+  @override
+  String get addPh => 'Rice, ডাল, murgir jhol…';
+  @override
+  List<String> get addTabs => const ['Recent', 'Frequent', 'Favourites'];
+  @override
+  String get addNone =>
+      'No match. Try the Bangla or English name, or scan your plate.';
+  @override
+  String get addScan => 'Scan your plate instead';
+  @override
+  String get addFav => 'Add to favourites';
+  @override
+  String get addUnfav => 'Remove from favourites';
+  @override
+  String addAdded(String food, String slot) => 'Added $food to $slot';
+  @override
+  String get addEmptyFav => 'Tap the star on any food to keep it here.';
+  @override
+  String get addEmptyRecent => 'Foods you log will show up here.';
+  @override
+  String get addPortion => 'Portion';
+  @override
+  String get addConfirm => 'Add';
+
+  @override
   String get scanHead => 'Add a meal';
   @override
   String get scanSub => 'You confirm every item. Nothing is saved until you do.';
@@ -1140,8 +1403,8 @@ class _En extends Strings {
       'Include a spoon or your thumb for a better size estimate.';
   @override
   String get scanNoModel =>
-      'Photo recognition is not available yet. Add the items by hand — it takes '
-      'about the same time.';
+      'Photo recognition isn\'t available right now. Add the items by hand — it '
+      'takes about the same time.';
   @override
   String get scanAddByHand => 'Add by hand';
   @override
@@ -1161,6 +1424,102 @@ class _En extends Strings {
   @override
   String get scanConfirmNote =>
       'This screen looks at food, never at you.';
+  @override
+  String get scanStartHead => 'Snap your plate';
+  @override
+  String get scanStartSub =>
+      'AI finds each food and estimates the portion. You confirm every item.';
+  @override
+  String get scanScanBtn => 'Scan food';
+  @override
+  String get scanGallery => 'From gallery';
+  @override
+  String get scanSearchInstead => 'Search instead';
+  @override
+  String get scanTipsHead => 'For the best estimate';
+  @override
+  List<String> get scanTips => const [
+        'Shoot from straight above',
+        'Add a spoon or your thumb for scale',
+        'Use good light and avoid flash glare',
+      ];
+  @override
+  String get scanPrivacy =>
+      'Your photo is sent to our AI service to be analysed, and is not stored. '
+      'Nothing is saved to your log until you confirm it.';
+  @override
+  String get scanConsentHead => 'Send photos for analysis?';
+  @override
+  String get scanConsentBody =>
+      'To estimate your meal, the photo is sent to an AI service (OpenRouter) '
+      'and analysed there. It is not stored, and it is used only to find the '
+      'food on your plate. You can still add food by hand without this.';
+  @override
+  String get scanConsentAllow => 'Allow and continue';
+  @override
+  String get scanGuide => 'Fit the plate inside the circle';
+  @override
+  String get scanClose => 'Close camera';
+  @override
+  String get scanShutter => 'Take photo';
+  @override
+  String get scanFlip => 'Switch camera';
+  @override
+  String get scanFlash => 'Flash';
+  @override
+  String get scanCameraUnavailable =>
+      'The camera isn\'t available here. Pick a photo from the gallery instead.';
+  @override
+  String get scanBusyHead => 'Analyzing your plate…';
+  @override
+  List<String> get scanBusySteps => const [
+        'Finding each food',
+        'Estimating portions',
+        'Working out glycemic load',
+      ];
+  @override
+  String get scanBusyFoot => 'Analysed by AI · the photo isn\'t stored';
+  @override
+  String get scanReviewHead => 'Review meal';
+  @override
+  String get scanDetected => 'Detected items';
+  @override
+  String get scanRetake => 'Retake';
+  @override
+  String get scanSpoonOk => 'Spoon found · portions are more accurate';
+  @override
+  String get scanSpoonTip => 'Add a spoon or your thumb for scale next time';
+  @override
+  String get scanCheckThis => 'Not sure — please check';
+  @override
+  String get scanAiEstimate => 'AI estimate';
+  @override
+  String get scanAddItem => 'Add a missing item';
+  @override
+  String get scanNoFood =>
+      'No food found in that photo. Try again from straight above, or add the '
+      'items by hand.';
+  @override
+  String get scanFailed =>
+      'The photo could not be analysed just now. Try again, or add the items '
+      'by hand.';
+  @override
+  String get scanFoot => 'You confirm every item. The AI only proposes.';
+  @override
+  String get scanPhotoLabel => 'Photo of your plate with detected foods outlined';
+  @override
+  String scanUnit(String unit) => switch (unit) {
+        'plate' => 'plate',
+        'bowl' => 'bowl',
+        'cup' => 'cup',
+        'piece' => 'piece',
+        'spoon' => 'spoon',
+        'slice' => 'slice',
+        'ladle' => 'ladle',
+        'serving' => 'serving',
+        'g' || 'gram' => 'g',
+        _ => unit,
+      };
 
   @override
   String get checkinHead => 'Daily check-in';
@@ -1256,8 +1615,15 @@ class _En extends Strings {
   String get coachPlaceholder => 'Ask about food, sugar or habits…';
   @override
   String get coachNotAModel =>
-      'This answers from your own logs using fixed wording — there is no AI '
-      'model behind it yet, and it will never discuss medication.';
+      'The AI is unreachable right now, so this answer uses fixed wording '
+      'from your own logs. It will never discuss medication.';
+  @override
+  String get coachAiBanner =>
+      'AI coach. It already reads your profile, meals, readings and activity, '
+      'so you don\'t need to type them in. Not a doctor, and it never advises '
+      'on medication. Your messages and data are processed by an AI service.';
+  @override
+  String get coachThinking => 'Thinking…';
   @override
   String coachRemaining(String n) => '$n free questions left today';
   @override
@@ -1401,6 +1767,133 @@ class _En extends Strings {
   String get settingsConsentTerms => 'Terms and Privacy Policy';
   @override
   String get settingsConsentDisclaimer => 'Medical disclaimer';
+
+  // ── 02b forgot password ─────────────────────────────────────────────
+  @override
+  String get fpBack => 'Back to log in';
+  @override
+  String fpStepLabel(String step, String total) =>
+      'Step $step of $total';
+  @override
+  String get fp1Head => 'Forgot your password?';
+  @override
+  String get fp1Sub =>
+      "Enter the email on your account. We'll email you a 6-digit code to reset it.";
+  @override
+  String get fp1Cta => 'Send code';
+  @override
+  String get fp1Note =>
+      'If an account uses this email, the code arrives within a minute — check '
+      "spam too. We never say which emails have an account.";
+  @override
+  String get fp2Head => 'Enter the code';
+  @override
+  String get fp2Sub => 'We sent a 6-digit code by email to';
+  @override
+  String get fp2Change => 'Change email';
+  @override
+  String get fp2Label => '6-digit code';
+  @override
+  String get fp2Resend => "Didn't get it?";
+  @override
+  String get fp2ResendBtn => 'Resend code';
+  @override
+  String get fp2Cta => 'Verify code';
+  @override
+  String get fp3Head => 'Set a new password';
+  @override
+  String get fp3Sub =>
+      'Use at least 8 characters, and avoid a password you use on other apps.';
+  @override
+  String get fp3New => 'New password';
+  @override
+  String get fp3Confirm => 'Confirm password';
+  @override
+  String get fp3Ph => 'At least 8 characters';
+  @override
+  String get fp3Ph2 => 'Type it again';
+  @override
+  String get fp3R1 => 'At least 8 characters';
+  @override
+  String get fp3R2 => 'Includes a number';
+  @override
+  String get fp3R3 => 'Both passwords match';
+  @override
+  String get fp3Cta => 'Save password';
+  @override
+  String get fp4Head => 'Password updated';
+  @override
+  String get fp4Sub =>
+      'Log in with your new password. For your safety, other devices signed in '
+      'to this account have been logged out.';
+  @override
+  String get fp4Cta => 'Back to log in';
+  @override
+  String get fpToastEmail =>
+      'Enter the email on your account first';
+  @override
+  String get fpToastSent => 'Code sent by email';
+  @override
+  String get fpToastResent => 'A new code is on its way';
+  @override
+  String get fpToastCode => 'Enter all 6 digits';
+  @override
+  String get fpToastPass => 'Check the password rules above';
+  @override
+  String get fpToastDone => 'Password updated';
+  @override
+  String get fpUnavailable =>
+      "Password reset isn't available right now. Try again later, or contact "
+      "support and we'll reset it for you.";
+  @override
+  String fpBadCode(String? left) => left == null
+      ? 'That code is wrong or has expired'
+      : 'That code is wrong. Tries left: $left';
+  @override
+  String get fpLocked =>
+      'Too many wrong codes. For your safety, reset is paused for 30 minutes.';
+  @override
+  String get fpExpired => 'This reset took too long. Please start again.';
+  @override
+  String fpResendIn(String seconds) => 'Resend in ${seconds}s';
+
+  // ── 09b notifications ───────────────────────────────────────────────
+  @override
+  String get nTitle => 'Notifications';
+  @override
+  String get nMarkAll => 'Mark all as read';
+  @override
+  String get nToday => 'Today';
+  @override
+  String get nEarlier => 'Earlier';
+  @override
+  String get nFilterAll => 'All';
+  @override
+  String get nFilterReminders => 'Reminders';
+  @override
+  String get nFilterInsights => 'Insights';
+  @override
+  String get nFilterAccount => 'Account';
+  @override
+  String get nEmptyHead => "You're all caught up";
+  @override
+  String get nEmptySub =>
+      'New reminders and insights will show up here.';
+  @override
+  String get nSettings => 'Notification settings';
+  @override
+  String get nDismiss => 'Dismiss';
+  @override
+  String nUnread(String n) => '$n unread';
+  @override
+  String get nNew => 'Unread';
+  @override
+  String get nToastAll => 'All marked as read';
+  @override
+  String get nPrivacy =>
+      'Notifications on your lock screen never show glucose, weight or risk '
+      'values.';
+
 }
 
 // ── Bangla ────────────────────────────────────────────────────────────
@@ -2079,6 +2572,120 @@ class _Bn extends Strings {
       'আজকের লোডের উপরে। পরের বেলায় ভাত একটু কম নেওয়াই সাধারণ পরবর্তী ধাপ।';
 
   @override
+  String get trPrevDay => 'আগের দিন';
+  @override
+  String get trNextDay => 'পরের দিন';
+  @override
+  String get trToday => 'আজ';
+  @override
+  String get trYesterday => 'গতকাল';
+  @override
+  String trDaysAgo(String n) => '$n দিন আগে';
+  @override
+  String trWeekday(int weekday) => const [
+        'সোম', 'মঙ্গল', 'বুধ', 'বৃহস্পতি', 'শুক্র', 'শনি', 'রবি'
+      ][(weekday - 1) % 7];
+  @override
+  String get trWater => 'পানি';
+  @override
+  String trWaterSub(String n, String g, String ml) =>
+      '$g গ্লাসের মধ্যে $n · $ml মিলি';
+  @override
+  String trGlass(String i) => '$i নম্বর গ্লাস';
+  @override
+  String get trAddFood => 'খাবার যোগ করুন';
+  @override
+  String get trScan => 'স্ক্যান';
+  @override
+  String get trSame => 'গতকালের মতো';
+  @override
+  String get trNotLogged => 'এখনো লগ করা হয়নি';
+  @override
+  String get trRemove => 'সরান';
+  @override
+  String get trLess => 'কমান';
+  @override
+  String get trMore => 'বাড়ান';
+  @override
+  String get trOverGoal => 'আজকের লক্ষ্যের চেয়ে বেশি';
+  @override
+  String get trLegendKcal => 'ক্যালরি';
+  @override
+  String get trLegendCarb => 'শর্করা';
+  @override
+  String trGlAim(String n) => 'দিনে $n-এর নিচে রাখার চেষ্টা করুন';
+  @override
+  String get trGlEmpty => 'আজকের গ্লাইসেমিক লোড দেখতে একটি খাবার লগ করুন।';
+  @override
+  String get trGlLow => 'এখন পর্যন্ত রক্তে শর্করার জন্য দিনটি হালকা।';
+  @override
+  String trGlNote(String slot) =>
+      'আজকের বেশিরভাগ লোড এসেছে $slot থেকে। অর্ধেক ভাতের বদলে সবজি নেওয়াই '
+      'সবচেয়ে সহজ উপায়।';
+  @override
+  String get trFoot =>
+      'ক্যালরি ও গ্লাইসেমিক লোড খাবারের ডেটাবেস থেকে আনুমানিক হিসাব, মাপা মান নয়।';
+  @override
+  String trSameToast(String slot) => 'গতকালের $slot কপি করা হয়েছে';
+  @override
+  String get trNothingToCopy => 'গতকাল এই বেলার কিছু লগ করা হয়নি।';
+  @override
+  String get trEditGoal => 'দৈনিক লক্ষ্য বদলান';
+  @override
+  String get amHead => 'একটি খাবার লগ করুন';
+  @override
+  String get amWhich => 'কোন বেলার খাবার?';
+  @override
+  String get amSearch => 'খাবার খুঁজুন';
+  @override
+  String get amScan => 'প্লেট স্ক্যান করুন';
+  @override
+  String get goalHead => 'দৈনিক ক্যালরি লক্ষ্য';
+  @override
+  String get goalNote =>
+      'আপনার প্রোফাইল থেকে ঠিক করা। বড় পরিবর্তনের আগে ডাক্তারের সাথে কথা বলুন।';
+  @override
+  String get goalSave => 'লক্ষ্য সংরক্ষণ করুন';
+  @override
+  String get goalToast => 'লক্ষ্য আপডেট হয়েছে';
+  @override
+  String get goalLess => 'লক্ষ্য কমান';
+  @override
+  String get goalMore => 'লক্ষ্য বাড়ান';
+  @override
+  String get goalReset => 'প্রোফাইলের লক্ষ্য ব্যবহার করুন';
+  @override
+  String goalRaised(String kcal) =>
+      'এটি আপনার নিরাপদ সর্বনিম্নের চেয়ে কম, তাই আজকের লক্ষ্য $kcal kcal।';
+  @override
+  String addHead(String slot) => '$slot-এ যোগ করুন';
+  @override
+  String get addSearch => 'খাবার খুঁজুন';
+  @override
+  String get addPh => 'ভাত, dal, মুরগির ঝোল…';
+  @override
+  List<String> get addTabs => const ['সাম্প্রতিক', 'প্রায়ই', 'পছন্দের'];
+  @override
+  String get addNone =>
+      'মিল পাওয়া যায়নি। বাংলা বা ইংরেজি নামে খুঁজুন, অথবা প্লেট স্ক্যান করুন।';
+  @override
+  String get addScan => 'বরং প্লেট স্ক্যান করুন';
+  @override
+  String get addFav => 'পছন্দের তালিকায় রাখুন';
+  @override
+  String get addUnfav => 'পছন্দের তালিকা থেকে সরান';
+  @override
+  String addAdded(String food, String slot) => '$slot-এ $food যোগ হয়েছে';
+  @override
+  String get addEmptyFav => 'যেকোনো খাবারের তারায় চাপ দিলে সেটি এখানে থাকবে।';
+  @override
+  String get addEmptyRecent => 'আপনি যা লগ করবেন তা এখানে দেখা যাবে।';
+  @override
+  String get addPortion => 'পরিমাণ';
+  @override
+  String get addConfirm => 'যোগ করুন';
+
+  @override
   String get scanHead => 'খাবার যোগ করুন';
   @override
   String get scanSub =>
@@ -2087,7 +2694,7 @@ class _Bn extends Strings {
   String get scanViewfinderHint => 'আকার বুঝতে ছবিতে একটি চামচ বা আঙুল রাখুন।';
   @override
   String get scanNoModel =>
-      'ছবি থেকে খাবার শনাক্ত করা এখনো নেই। হাতে যোগ করুন — সময় প্রায় একই লাগে।';
+      'এই মুহূর্তে ছবি থেকে খাবার শনাক্ত করা যাচ্ছে না। হাতে যোগ করুন — সময় প্রায় একই লাগে।';
   @override
   String get scanAddByHand => 'হাতে যোগ করুন';
   @override
@@ -2106,6 +2713,100 @@ class _Bn extends Strings {
       'হিসেবে দেখুন।';
   @override
   String get scanConfirmNote => 'এই স্ক্রিন খাবার দেখে, আপনাকে নয়।';
+  @override
+  String get scanStartHead => 'প্লেটের ছবি তুলুন';
+  @override
+  String get scanStartSub =>
+      'AI প্রতিটি খাবার চিনে পরিমাণ আন্দাজ করবে, আপনি প্রতিটি আইটেম নিশ্চিত করবেন।';
+  @override
+  String get scanScanBtn => 'খাবার স্ক্যান করুন';
+  @override
+  String get scanGallery => 'গ্যালারি থেকে';
+  @override
+  String get scanSearchInstead => 'বরং খুঁজুন';
+  @override
+  String get scanTipsHead => 'সবচেয়ে ভালো হিসাবের জন্য';
+  @override
+  List<String> get scanTips => const [
+        'ঠিক ওপর থেকে ছবি তুলুন',
+        'মাপের জন্য একটি চামচ বা আঙুল রাখুন',
+        'ভালো আলোতে তুলুন, ফ্ল্যাশের ঝলক এড়িয়ে',
+      ];
+  @override
+  String get scanPrivacy =>
+      'বিশ্লেষণের জন্য ছবিটি আমাদের এআই সেবায় পাঠানো হয়, সংরক্ষণ করা হয় না। '
+      'আপনি নিশ্চিত না করা পর্যন্ত কিছুই লগে যোগ হয় না।';
+  @override
+  String get scanConsentHead => 'বিশ্লেষণের জন্য ছবি পাঠাবেন?';
+  @override
+  String get scanConsentBody =>
+      'খাবারের হিসাব করতে ছবিটি একটি এআই সেবায় (OpenRouter) পাঠানো হয় এবং সেখানে '
+      'বিশ্লেষণ হয়। ছবিটি সংরক্ষণ করা হয় না, শুধু প্লেটের খাবার চিনতে ব্যবহার হয়। '
+      'এটি ছাড়াও আপনি হাতে খাবার যোগ করতে পারবেন।';
+  @override
+  String get scanConsentAllow => 'অনুমতি দিন ও এগিয়ে যান';
+  @override
+  String get scanGuide => 'প্লেটটি বৃত্তের ভেতরে রাখুন';
+  @override
+  String get scanClose => 'ক্যামেরা বন্ধ করুন';
+  @override
+  String get scanShutter => 'ছবি তুলুন';
+  @override
+  String get scanFlip => 'ক্যামেরা বদলান';
+  @override
+  String get scanFlash => 'ফ্ল্যাশ';
+  @override
+  String get scanCameraUnavailable =>
+      'এখানে ক্যামেরা পাওয়া যাচ্ছে না। বরং গ্যালারি থেকে একটি ছবি বেছে নিন।';
+  @override
+  String get scanBusyHead => 'আপনার প্লেট বিশ্লেষণ হচ্ছে…';
+  @override
+  List<String> get scanBusySteps => const [
+        'প্রতিটি খাবার শনাক্ত করা হচ্ছে',
+        'পরিমাণ আন্দাজ করা হচ্ছে',
+        'গ্লাইসেমিক লোড হিসাব করা হচ্ছে',
+      ];
+  @override
+  String get scanBusyFoot => 'এআই দিয়ে বিশ্লেষণ · ছবি সংরক্ষণ হয় না';
+  @override
+  String get scanReviewHead => 'খাবার যাচাই করুন';
+  @override
+  String get scanDetected => 'শনাক্ত করা আইটেম';
+  @override
+  String get scanRetake => 'আবার তুলুন';
+  @override
+  String get scanSpoonOk => 'চামচ পাওয়া গেছে · পরিমাণ আরও সঠিক';
+  @override
+  String get scanSpoonTip => 'পরের বার মাপের জন্য একটি চামচ বা আঙুল রাখুন';
+  @override
+  String get scanCheckThis => 'নিশ্চিত নয় — একবার দেখে নিন';
+  @override
+  String get scanAiEstimate => 'এআই-এর আন্দাজ';
+  @override
+  String get scanAddItem => 'বাদ পড়া আইটেম যোগ করুন';
+  @override
+  String get scanNoFood =>
+      'ছবিতে কোনো খাবার পাওয়া যায়নি। ঠিক ওপর থেকে আবার তুলুন, বা হাতে যোগ করুন।';
+  @override
+  String get scanFailed =>
+      'এই মুহূর্তে ছবিটি বিশ্লেষণ করা গেল না। আবার চেষ্টা করুন, বা হাতে যোগ করুন।';
+  @override
+  String get scanFoot => 'প্রতিটি আইটেম আপনি নিশ্চিত করেন। এআই শুধু প্রস্তাব দেয়।';
+  @override
+  String get scanPhotoLabel => 'আপনার প্লেটের ছবি, শনাক্ত করা খাবার চিহ্নিত';
+  @override
+  String scanUnit(String unit) => switch (unit) {
+        'plate' => 'প্লেট',
+        'bowl' => 'বাটি',
+        'cup' => 'কাপ',
+        'piece' => 'পিস',
+        'spoon' => 'চামচ',
+        'slice' => 'স্লাইস',
+        'ladle' => 'হাতা',
+        'serving' => 'পরিবেশন',
+        'g' || 'gram' => 'গ্রাম',
+        _ => unit,
+      };
 
   @override
   String get checkinHead => 'দৈনিক চেক-ইন';
@@ -2203,8 +2904,15 @@ class _Bn extends Strings {
   String get coachPlaceholder => 'খাবার, সুগার বা অভ্যাস নিয়ে জিজ্ঞাসা করুন…';
   @override
   String get coachNotAModel =>
-      'এটি আপনার নিজের তথ্য থেকে নির্দিষ্ট ভাষায় উত্তর দেয় — এখনো এর পেছনে কোনো '
-      'এআই মডেল নেই, এবং এটি কখনো ওষুধ নিয়ে কথা বলবে না।';
+      'এই মুহূর্তে এআই-এর সাথে যোগাযোগ হচ্ছে না, তাই উত্তরটি আপনার নিজের তথ্য থেকে '
+      'নির্দিষ্ট ভাষায় দেওয়া। এটি কখনো ওষুধ নিয়ে কথা বলবে না।';
+  @override
+  String get coachAiBanner =>
+      'এআই কোচ। আপনার প্রোফাইল, খাবার, রিডিং ও অ্যাক্টিভিটি এটি নিজেই দেখে নেয়, '
+      'তাই আলাদা করে লিখতে হবে না। এটি ডাক্তার নয়, ওষুধ নিয়ে পরামর্শ দেয় না। '
+      'আপনার বার্তা ও তথ্য একটি এআই সেবায় প্রক্রিয়া হয়।';
+  @override
+  String get coachThinking => 'ভাবছে…';
   @override
   String coachRemaining(String n) => 'আজ আর $n টি বিনামূল্যে প্রশ্ন বাকি';
   @override
@@ -2347,4 +3055,129 @@ class _Bn extends Strings {
   String get settingsConsentTerms => 'শর্তাবলি ও গোপনীয়তা নীতি';
   @override
   String get settingsConsentDisclaimer => 'চিকিৎসা-বিষয়ক দাবিত্যাগ';
+
+  // ── 02b forgot password ─────────────────────────────────────────────
+  @override
+  String get fpBack => 'লগ ইনে ফিরে যান';
+  @override
+  String fpStepLabel(String step, String total) =>
+      'ধাপ $step / $total';
+  @override
+  String get fp1Head => 'পাসওয়ার্ড ভুলে গেছেন?';
+  @override
+  String get fp1Sub =>
+      'আপনার অ্যাকাউন্টের ইমেইল দিন। রিসেট করতে আমরা ইমেইলে ৬ অঙ্কের একটি কোড পাঠাব।';
+  @override
+  String get fp1Cta => 'কোড পাঠান';
+  @override
+  String get fp1Note =>
+      'এই ইমেইলে অ্যাকাউন্ট থাকলে এক মিনিটের মধ্যে কোড পৌঁছাবে — স্প্যাম '
+      'ফোল্ডারও দেখুন। কোন ইমেইলে অ্যাকাউন্ট আছে, তা আমরা কখনো জানাই না।';
+  @override
+  String get fp2Head => 'কোডটি লিখুন';
+  @override
+  String get fp2Sub =>
+      '৬ অঙ্কের কোডটি ইমেইলে পাঠানো হয়েছে এই ঠিকানায়:';
+  @override
+  String get fp2Change => 'ইমেইল বদলান';
+  @override
+  String get fp2Label => '৬ অঙ্কের কোড';
+  @override
+  String get fp2Resend => 'কোড পাননি?';
+  @override
+  String get fp2ResendBtn => 'আবার পাঠান';
+  @override
+  String get fp2Cta => 'কোড যাচাই করুন';
+  @override
+  String get fp3Head => 'নতুন পাসওয়ার্ড দিন';
+  @override
+  String get fp3Sub =>
+      'অন্তত ৮ অক্ষর ব্যবহার করুন, আর অন্য অ্যাপে ব্যবহার করা পাসওয়ার্ড এড়িয়ে চলুন।';
+  @override
+  String get fp3New => 'নতুন পাসওয়ার্ড';
+  @override
+  String get fp3Confirm => 'পাসওয়ার্ড নিশ্চিত করুন';
+  @override
+  String get fp3Ph => 'অন্তত ৮ অক্ষর';
+  @override
+  String get fp3Ph2 => 'আবার লিখুন';
+  @override
+  String get fp3R1 => 'অন্তত ৮ অক্ষর';
+  @override
+  String get fp3R2 => 'অন্তত একটি সংখ্যা';
+  @override
+  String get fp3R3 => 'দুটি পাসওয়ার্ড মিলেছে';
+  @override
+  String get fp3Cta => 'পাসওয়ার্ড সংরক্ষণ করুন';
+  @override
+  String get fp4Head => 'পাসওয়ার্ড বদলানো হয়েছে';
+  @override
+  String get fp4Sub =>
+      'নতুন পাসওয়ার্ড দিয়ে লগ ইন করুন। নিরাপত্তার জন্য এই অ্যাকাউন্টে লগ ইন '
+      'থাকা অন্য ডিভাইসগুলো থেকে লগ আউট করা হয়েছে।';
+  @override
+  String get fp4Cta => 'লগ ইনে ফিরে যান';
+  @override
+  String get fpToastEmail => 'আগে অ্যাকাউন্টের ইমেইল দিন';
+  @override
+  String get fpToastSent => 'ইমেইলে কোড পাঠানো হয়েছে';
+  @override
+  String get fpToastResent => 'নতুন কোড পাঠানো হচ্ছে';
+  @override
+  String get fpToastCode => '৬টি অঙ্কই লিখুন';
+  @override
+  String get fpToastPass => 'ওপরের পাসওয়ার্ডের শর্তগুলো দেখুন';
+  @override
+  String get fpToastDone => 'পাসওয়ার্ড বদলানো হয়েছে';
+  @override
+  String get fpUnavailable =>
+      'এই মুহূর্তে পাসওয়ার্ড রিসেট করা যাচ্ছে না। পরে আবার চেষ্টা করুন, অথবা '
+      'সাপোর্টে যোগাযোগ করুন, আমরা রিসেট করে দেব।';
+  @override
+  String fpBadCode(String? left) => left == null
+      ? 'কোডটি ভুল বা মেয়াদ শেষ'
+      : 'কোডটি ভুল। আর $left বার চেষ্টা করা যাবে';
+  @override
+  String get fpLocked =>
+      'অনেকবার ভুল কোড দেওয়া হয়েছে। আপনার নিরাপত্তার জন্য ৩০ মিনিট রিসেট বন্ধ থাকবে।';
+  @override
+  String get fpExpired => 'অনেক সময় লেগে গেছে। আবার শুরু করুন।';
+  @override
+  String fpResendIn(String seconds) => '$seconds সেকেন্ড পরে আবার পাঠান';
+
+  // ── 09b notifications ───────────────────────────────────────────────
+  @override
+  String get nTitle => 'নোটিফিকেশন';
+  @override
+  String get nMarkAll => 'সব পড়া হয়েছে';
+  @override
+  String get nToday => 'আজ';
+  @override
+  String get nEarlier => 'আগের';
+  @override
+  String get nFilterAll => 'সব';
+  @override
+  String get nFilterReminders => 'রিমাইন্ডার';
+  @override
+  String get nFilterInsights => 'ইনসাইট';
+  @override
+  String get nFilterAccount => 'অ্যাকাউন্ট';
+  @override
+  String get nEmptyHead => 'সব দেখা হয়ে গেছে';
+  @override
+  String get nEmptySub => 'নতুন রিমাইন্ডার ও ইনসাইট এখানে দেখাবে।';
+  @override
+  String get nSettings => 'নোটিফিকেশন সেটিংস';
+  @override
+  String get nDismiss => 'সরিয়ে দিন';
+  @override
+  String nUnread(String n) => '$nটি অপঠিত';
+  @override
+  String get nNew => 'অপঠিত';
+  @override
+  String get nToastAll => 'সব পড়া হিসেবে চিহ্নিত';
+  @override
+  String get nPrivacy =>
+      'লক স্ক্রিনের নোটিফিকেশনে কখনো গ্লুকোজ, ওজন বা ঝুঁকির মান দেখানো হয় না।';
+
 }

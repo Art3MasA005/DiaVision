@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand colours from the design handoff; fixed in light and dark. -->
+    <color name="ic_launcher_background">#FFFDF9</color>
+    <!-- accent-2 700: the middle of the Flutter splash's sage gradient, so the
+         hand-off from the native launch screen to the first frame is quiet. -->
+    <color name="splash_ground">#56633F</color>
+</resources>

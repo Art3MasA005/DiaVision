@@ -32,6 +32,25 @@ class Settings(BaseSettings):
     access_token_minutes: int = 30
     refresh_token_days: int = 30
 
+    # ── language model (OpenRouter) ──────────────────────
+    # Empty key = no model. The coach then falls back to its fixed-wording
+    # answers and the camera to manual entry, and both say so.
+    openrouter_api_key: str = ""
+    openrouter_model: str = "qwen/qwen3.7-flash"
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    llm_timeout_seconds: float = 45.0
+
+    # ── email (password reset codes) ─────────────────────
+    # Empty host = no email. In development the code is then written to the
+    # server log instead; in production reset answers 503 for every address
+    # alike, rather than pretending a code was sent.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_starttls: bool = True
+
     # ── app ──────────────────────────────────────────────
     environment: str = "development"
     default_region: str = "bd"

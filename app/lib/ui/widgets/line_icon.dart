@@ -29,6 +29,15 @@ class Icons24 {
   static const infoCircle =
       'M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18|M12 16v-4|M12 8h.01';
   static const check = 'm5 12.5 4.5 4.5L19 7.5';
+  static const checkCheck = 'M18 7 9.5 15.5 6 12|m22 7-8.5 8.5-1-1';
+  static const close = 'M18 6 6 18|M6 6l12 12';
+  static const barChart = 'M4 20V9|M10 20V4|M16 20v-7|M22 20h-20';
+  static const bell = 'M10.3 21a1.94 1.94 0 0 0 3.4 0|'
+      'M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9';
+  static const key = 'M8 10.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9|'
+      'm11.2 11.8 8.8-8.8|M16.5 6.5 19 9|M14 9l2 2';
+  static const message =
+      'M20.5 12a8.5 8.5 0 0 1-12.4 7.5L4 20.5l1.1-3.9A8.5 8.5 0 1 1 20.5 12Z';
   static const chevronLeft = 'm14.5 5-6.5 7 6.5 7';
   static const chevronRight = 'm9.5 5 6.5 7-6.5 7';
   static const chevronDown = 'm5 9 7 6.5L19 9';
@@ -84,6 +93,19 @@ class Icons24 {
   static const navWalk = 'M13 3v6l5 2-2 10|M8 21v-5l-3-3 1-6 4-2|'
       'M16 2.4a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2';
   static const navChat = 'M21 12a8 8 0 0 1-11.4 7.2L4 21l1.8-5.6A8 8 0 1 1 21 12Z';
+
+  // The camera flow (Lucide: image, search, zap, refresh-cw, plus, sparkles).
+  static const image = 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z|'
+      'M9 7a2 2 0 1 1 0 4 2 2 0 0 1 0-4|m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21';
+  static const search = 'M11 3a8 8 0 1 1 0 16 8 8 0 0 1 0-16|m21 21-4.3-4.3';
+  static const zap = 'M13 2 3 14h9l-1 8 10-12h-9l1-8z';
+  static const flipCamera = 'M3 12a9 9 0 0 1 15-6.7L21 8|M21 3v5h-5|'
+      'M21 12a9 9 0 0 1-15 6.7L3 16|M8 16H3v5';
+  static const plus = 'M12 5v14|M5 12h14';
+  static const minus = 'M5 12h14';
+  static const star = 'M12 2.8l2.85 5.78 6.38.93-4.62 4.5 1.09 6.35L12 17.36l-5.7 3 1.09-6.35-4.62-4.5 6.38-.93z';
+  static const sparkles =
+      'M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z|M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z';
 
   /// Icons that must mirror under RTL. Symmetrical glyphs are left alone —
   /// flipping a droplet or a globe is noise, not localization.

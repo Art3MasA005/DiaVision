@@ -1,6 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The API, the AI coach and the food camera all need the network; the
+         debug manifest grants this for development only. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Scan food: photographs a plate. Never used for anything else. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <application
-        android:label="DiaVision"
+        android:label="Diavision"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

@@ -72,6 +72,11 @@ class Account(Base):
     created_at: Mapped[datetime] = _now()
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # Tokens issued before this instant are refused. Set by a password reset,
+    # which is how "a successful reset signs out every other session" works
+    # with stateless JWTs: nothing has to be listed, only compared.
+    tokens_valid_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     owned_profiles: Mapped[list["Profile"]] = relationship(
         back_populates="owner", foreign_keys="Profile.account_id_owner"
     )
@@ -115,6 +120,40 @@ class Consent(Base):
         CheckConstraint("kind IN ('terms','privacy','medical_disclaimer','model_improvement')",
                         name="ck_consent_kind"),
         Index("ix_consent_account_kind", "account_id", "kind", "accepted_at"),
+    )
+
+
+class PasswordReset(Base):
+    """One emailed reset code. Account-scoped, behind RLS like `consents`.
+
+    The code itself is never stored, only an HMAC of it keyed with the server
+    secret and the row id, so a database dump does not hand anyone a working
+    code. Rules (handoff, screen "forgot"):
+
+      * the code expires 10 minutes after it is sent;
+      * 5 wrong tries lock reset for 30 minutes;
+      * a new code is sent at most once every 60 seconds;
+      * a successful reset stamps `accounts.tokens_valid_after`, which signs
+        out every session that existed before it.
+    """
+
+    __tablename__ = "password_resets"
+
+    id: Mapped[uuid.UUID] = _pk()
+    account_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False
+    )
+    code_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = _now()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint("attempts BETWEEN 0 AND 100", name="ck_reset_attempts"),
+        Index("ix_password_resets_account_created", "account_id", "created_at"),
     )
 
 
@@ -254,6 +293,17 @@ class HealthProfile(Base):
 
     goal_type: Mapped[str | None] = mapped_column(String(16))
     goal_weight_kg: Mapped[float | None] = mapped_column(Float)
+    # The user's own daily calorie goal from the tracker's goal sheet. A
+    # request, not a target: it still goes through the §5.4 rails, so a goal
+    # typed too low is raised to the floor rather than obeyed.
+    kcal_goal: Mapped[int | None] = mapped_column(Integer)
+
+    # Optional, user-declared: WHICH POPULATION'S PUBLISHED CUTOFFS to use.
+    # Not an ethnicity model feature: it is applied at the calibration layer
+    # (ml/pipelines/clinical_scores.py ANCESTRY_SCORE) and never reaches the
+    # gradient booster. Special-category data under GDPR Art. 9, so NULL is
+    # the default and costs the user nothing.
+    ancestry_cutoff_group: Mapped[str | None] = mapped_column(String(24))
 
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
@@ -275,6 +325,10 @@ class HealthProfile(Base):
             "diabetes_status IS NULL OR diabetes_status IN "
             "('no','prediabetes','t2d','t1d','gestational')",
             name="ck_diabetes_status"),
+        CheckConstraint(
+            "ancestry_cutoff_group IS NULL OR ancestry_cutoff_group IN "
+            "('south_asian','east_asian','european','african','middle_eastern','hispanic')",
+            name="ck_ancestry_cutoff_group"),
         # Ranges mirror feature_spec.json. Enforced here so a buggy migration
         # or a direct SQL write cannot store a physiologically impossible value.
         CheckConstraint("height_cm IS NULL OR (height_cm BETWEEN 100 AND 250)",
@@ -440,6 +494,10 @@ class FoodItem(Base):
 
     # Grams for one of the region's local portion units, keyed by unit_en.
     portion_grams: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
+    # Other names people type: transliterations ("bhat", "murgir jhol") and
+    # common spellings. Lower-case, space-separated; searched with ILIKE.
+    aliases: Mapped[str] = mapped_column(Text, default="", server_default="", nullable=False)
 
     source: Mapped[str] = mapped_column(String(32), default="placeholder", nullable=False)
     created_at: Mapped[datetime] = _now()
@@ -616,6 +674,50 @@ class ActivityLog(Base):
     )
 
 
+class WaterLog(Base):
+    """Glasses of water for one day. Upserted per day, like activity."""
+
+    __tablename__ = "water_logs"
+
+    id: Mapped[uuid.UUID] = _pk()
+    profile_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    logged_on: Mapped[date] = mapped_column(Date, nullable=False)
+    glasses: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    ml_per_glass: Mapped[int] = mapped_column(Integer, default=250, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint("glasses BETWEEN 0 AND 30", name="ck_water_glasses"),
+        CheckConstraint("ml_per_glass BETWEEN 50 AND 1000", name="ck_water_ml"),
+        UniqueConstraint("profile_id", "logged_on", name="uq_water_profile_day"),
+    )
+
+
+class FoodFavourite(Base):
+    """A food the user starred in Add food. Profile-scoped, behind RLS."""
+
+    __tablename__ = "food_favourites"
+
+    id: Mapped[uuid.UUID] = _pk()
+    profile_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    food_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("food_items.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = _now()
+
+    __table_args__ = (
+        UniqueConstraint("profile_id", "food_id", name="uq_favourite_profile_food"),
+    )
+
+
 # ──────────────────────────────────────────────────────────────────────
 # Coach and reports — PRD §F8, §F9, §F10
 # ──────────────────────────────────────────────────────────────────────
@@ -701,4 +803,6 @@ PROFILE_SCOPED_TABLES = [
     "activity_logs",
     "coach_messages",
     "reports",
+    "water_logs",
+    "food_favourites",
 ]

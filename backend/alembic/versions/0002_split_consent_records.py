@@ -19,6 +19,10 @@ from typing import Sequence
 
 import sqlalchemy as sa
 from alembic import op
+
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from app.db.migration_guards import Guarded  # noqa: E402
 from sqlalchemy.dialects import postgresql
 
 revision: str = "0002"
@@ -30,7 +34,10 @@ RLS_SQL = Path(__file__).resolve().parents[2] / "app" / "db" / "rls.sql"
 
 
 def upgrade() -> None:
-    op.create_table(
+    # Guarded: on a fresh database 0001 already built these from the models.
+    # See app/db/migration_guards.py.
+    g = Guarded(op)
+    g.create_table(
         "consents",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column("account_id", postgresql.UUID(as_uuid=True),
@@ -45,21 +52,23 @@ def upgrade() -> None:
         sa.CheckConstraint("kind IN ('terms','privacy','medical_disclaimer','model_improvement')",
                            name="ck_consent_kind"),
     )
-    op.create_index("ix_consents_account_id", "consents", ["account_id"])
-    op.create_index("ix_consent_account_kind", "consents",
+    g.create_index("ix_consents_account_id", "consents", ["account_id"])
+    g.create_index("ix_consent_account_kind", "consents",
                     ["account_id", "kind", "accepted_at"])
 
     # Carry existing acceptances across as BOTH kinds. Those users genuinely
     # saw a combined screen, so recording only one would understate what they
     # agreed to, and recording neither would lock them out of their own data.
-    op.execute(sa.text("""
-        INSERT INTO consents (id, account_id, kind, version, locale, accepted_at)
-        SELECT gen_random_uuid(), id, k.kind, '1.0', locale, disclaimer_accepted_at
-        FROM accounts, (VALUES ('terms'), ('medical_disclaimer')) AS k(kind)
-        WHERE disclaimer_accepted_at IS NOT NULL
-    """))
+    # Only an upgraded database has the old column to carry across.
+    if "disclaimer_accepted_at" in g.columns("accounts"):
+        op.execute(sa.text("""
+            INSERT INTO consents (id, account_id, kind, version, locale, accepted_at)
+            SELECT gen_random_uuid(), id, k.kind, '1.0', locale, disclaimer_accepted_at
+            FROM accounts, (VALUES ('terms'), ('medical_disclaimer')) AS k(kind)
+            WHERE disclaimer_accepted_at IS NOT NULL
+        """))
 
-    op.drop_column("accounts", "disclaimer_accepted_at")
+        g.drop_column("accounts", "disclaimer_accepted_at")
 
     # Re-run the whole policy file: it is idempotent (every CREATE POLICY is
     # preceded by DROP POLICY IF EXISTS) and this is what applies the new

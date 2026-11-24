@@ -11,6 +11,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.password_reset import router as password_reset_router
 from app.api.routes import router
 from app.config import get_settings
 
@@ -45,6 +46,7 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api/v1")
+app.include_router(password_reset_router, prefix="/api/v1")
 
 
 @app.exception_handler(ValueError)

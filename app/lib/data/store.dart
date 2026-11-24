@@ -90,6 +90,13 @@ class PrefsStore {
   bool get weightUnitKg => _prefs.getBool(_kWeightUnitKg) ?? true;
   Future<void> setWeightUnitKg(bool v) => _prefs.setBool(_kWeightUnitKg, v);
 
+  /// The user agreed to send meal photos to the AI service for analysis.
+  /// Asked once, before the first photo leaves the phone.
+  static const _kPhotoConsent = 'bbd.photoAnalysisConsent';
+  bool get photoAnalysisConsent => _prefs.getBool(_kPhotoConsent) ?? false;
+  Future<void> setPhotoAnalysisConsent(bool v) =>
+      _prefs.setBool(_kPhotoConsent, v);
+
   /// The declared cutoff group. Held client-side because the backend does not
   /// yet persist it — see the gap noted in the app README. `null` means
   /// skipped, which is a real answer here, not an unanswered question.

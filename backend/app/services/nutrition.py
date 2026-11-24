@@ -141,6 +141,13 @@ def mifflin_st_jeor(sex: str, weight_kg: float, height_cm: float, age: int) -> f
     return base + (5 if sex == "male" else -161)
 
 
+# The goal sheet's range.
+GOAL_MIN_KCAL = 1200
+GOAL_MAX_KCAL = 3500
+
+# A day's glycemic-load aim, shown as a marker on the tracker's GL bar.
+GL_DAILY_AIM = 80
+
 ACTIVITY_FACTORS = {
     "sedentary": 1.2,
     "light": 1.375,
@@ -174,6 +181,7 @@ def daily_target(
     activity: str = "sedentary",
     goal: str = "maintain",
     bmi: float | None = None,
+    requested_kcal: int | None = None,
 ) -> DailyTarget:
     """A day's targets, already through the §5.4 rails.
 
@@ -185,7 +193,13 @@ def daily_target(
     rmr = mifflin_st_jeor(sex, weight_kg, height_cm, age)
     maintenance = rmr * ACTIVITY_FACTORS.get(activity, 1.2)
 
-    requested = maintenance - (400 if goal == "lose" else 0)
+    # The user's own goal from the goal sheet, when set, replaces the computed
+    # one — but it is still a request. It goes through the same rails below,
+    # and the goal sheet's own range (1,200–3,500) caps it from above.
+    if requested_kcal is not None:
+        requested = float(min(max(requested_kcal, 1200), GOAL_MAX_KCAL))
+    else:
+        requested = maintenance - (400 if goal == "lose" else 0)
     clamped: CalorieTarget = clamp_calorie_target(
         requested_kcal=requested, sex=sex, tdee=maintenance, bmi=bmi
     )
@@ -209,9 +223,9 @@ def daily_target(
         fat_g=fat_g,
         # 25–30g is the usual adult recommendation; scale gently with intake.
         fibre_g=max(25, int(round(kcal / 1000 * 14))),
-        # A widely-used "moderate day" ceiling. Presented as guidance, and
-        # never as a pass/fail — the copy names the next smaller portion.
-        glycemic_load_ceiling=100,
+        # The design's "aim to keep it under 80 a day". Presented as guidance
+        # and never as a pass/fail — the copy names the next smaller portion.
+        glycemic_load_ceiling=GL_DAILY_AIM,
         maintenance_kcal=int(round(maintenance)),
         was_clamped=clamped.was_clamped,
         clamp_reason=clamped.reason,

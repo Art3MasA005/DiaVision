@@ -11,17 +11,38 @@ import '../core/numerals.dart';
 import '../core/typography.dart';
 import '../data/api.dart';
 import '../data/models.dart';
+import '../data/notifications.dart';
+import '../data/password_reset.dart';
 import '../data/store.dart';
 import '../l10n/strings.dart';
 
 enum AppThemeMode { light, dark, system }
 
 class AppState extends ChangeNotifier {
-  AppState({required this.api, required this.secure, required this.prefs});
+  AppState({
+    required this.api,
+    required this.secure,
+    required this.prefs,
+    PasswordReset? passwordReset,
+    Inbox? inbox,
+  })  : passwordReset = passwordReset ?? HttpPasswordReset(api),
+        inbox = inbox ?? Inbox.sample() {
+    // The Home badge reads the inbox through AppScope, so an inbox change has
+    // to rebuild whatever depends on app state.
+    this.inbox.addListener(notifyListeners);
+  }
 
   final Api api;
   final SecureStore secure;
   final PrefsStore prefs;
+
+  /// Behind an interface so tests and screenshots can walk the flow without
+  /// a server — see `data/password_reset.dart`.
+  final PasswordReset passwordReset;
+
+  /// Sample-seeded until `GET /notifications` exists — see
+  /// `data/notifications.dart`.
+  final Inbox inbox;
 
   // ── language and presentation ───────────────────────────────────────
 

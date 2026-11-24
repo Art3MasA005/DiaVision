@@ -261,17 +261,29 @@ class PillButton extends StatelessWidget {
     };
     final off = !enabled;
 
+    // The handoff's accent pill hovers to accent-600 and presses to `--press`:
+    // #8c491a (light accent-700) in light, #b2622d (light accent-600, which
+    // the dark ramp does not have) in dark.
+    final accent = tone == PillTone.accent && !off;
+    final press = c.isDark ? const Color(0xFFB2622D) : c.accentRamp.c700;
+
     return _Pressable(
       onTap: off ? onDisabledTap : onPressed,
       borderRadius: AppRadius.rPill,
       hoverColor: tone == PillTone.accent ? null : c.accentRamp.c100,
-      child: Container(
+      builder: (hover, down) => Container(
         padding: EdgeInsets.symmetric(
           horizontal: 18,
           vertical: compact ? 13 : 16,
         ),
         decoration: BoxDecoration(
-          color: off ? c.neutral.c300 : bg,
+          color: off
+              ? c.neutral.c300
+              : accent && down
+                  ? press
+                  : accent && hover
+                      ? c.accentRamp.c600
+                      : bg,
           borderRadius: AppRadius.rPill,
           border: border == null && !off
               ? null
@@ -464,16 +476,22 @@ class IconChip extends StatelessWidget {
 /// the handoff asks for; Material's default is invisible on this ground.
 class _Pressable extends StatefulWidget {
   const _Pressable({
-    required this.child,
+    this.child,
     required this.onTap,
     required this.borderRadius,
     this.hoverColor,
-  });
+    this.builder,
+  }) : assert(child != null || builder != null);
 
-  final Widget child;
+  final Widget? child;
   final VoidCallback? onTap;
   final BorderRadius borderRadius;
   final Color? hoverColor;
+
+  /// For a control that paints its own fill (the accent pill): it is handed
+  /// the hover and pressed state and draws them itself, and the generic dim
+  /// overlay is skipped.
+  final Widget Function(bool hover, bool down)? builder;
 
   @override
   State<_Pressable> createState() => _PressableState();
@@ -511,13 +529,13 @@ class _PressableState extends State<_Pressable> {
                   ? Border.all(color: c.accent, width: 2)
                   : null,
             ),
-            foregroundDecoration: _down
+            foregroundDecoration: _down && widget.builder == null
                 ? BoxDecoration(
                     borderRadius: widget.borderRadius,
                     color: c.text.withValues(alpha: 0.06),
                   )
                 : null,
-            child: widget.child,
+            child: widget.builder?.call(_hover, _down) ?? widget.child,
           ),
         ),
       ),

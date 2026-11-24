@@ -21,9 +21,11 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
+import '../../core/tokens.dart';
 import '../../data/api.dart';
 import '../../main.dart';
 import '../../state/app_state.dart';
+import '../illustrations/clear_lens_logo.dart';
 import '../widgets/kit.dart';
 import '../widgets/line_icon.dart';
 import '../widgets/shell.dart';
@@ -227,8 +229,10 @@ class _AuthScreenState extends State<AuthScreen> {
               alignment: AlignmentDirectional.centerEnd,
               child: GhostButton(
                 label: s.forgotPassword,
-                // Not wired for v1. Says so rather than pretending.
-                onPressed: () => showToast(context, s.errServer),
+                onPressed: () => Navigator.of(context).pushNamed(
+                  Routes.forgotPassword,
+                  arguments: _email.text.trim(),
+                ),
               ),
             ),
           if (_isSignup)
@@ -286,7 +290,14 @@ class _AuthScreenState extends State<AuthScreen> {
   Widget _brandRow(dynamic c) => HGap(
         12,
         children: [
-          IconChip(icon: Icons24.activity, size: 46, iconSize: 23),
+          // The Clear Lens tile, lifted with shadow-sm as in the handoff.
+          DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: AppShadow.sm(c.isDark),
+            ),
+            child: const ClearLensLogo(size: 46),
+          ),
           Expanded(
             child: VGap(
               2,

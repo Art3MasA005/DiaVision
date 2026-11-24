@@ -32,7 +32,10 @@ Stage 2 landed before Stage 1 because the leakage audit had to settle which feat
 .\run.ps1 -Web     # backend + app in Chrome
 ```
 
-Needs PostgreSQL and a one-time `alembic -c backend/alembic.ini upgrade head`.
+Needs PostgreSQL, `python backend/scripts/setup_db.py` once, then
+`alembic -c backend/alembic.ini upgrade head` (it also works on an empty
+database). Password reset emails need `SMTP_*` in `backend/.env`; without
+it, development prints the code in the server log.
 Details in [app/README.md](app/README.md).
 
 ## What is actually built, and what is honestly stubbed
@@ -41,11 +44,18 @@ The app is complete as a product surface: eleven questions → a calibrated risk
 range → tracking, check-ins, activity, vitals, insights and a clinician report,
 in English and Bangla, light and dark, with the safety machinery wired through.
 
-Three things have **no real implementation and say so on screen** rather than
-faking it — photo food recognition, the AI coach's language model, and payment.
-Each has its contract, its guards and its tests in place so the missing piece
-drops in behind them. [app/README.md](app/README.md#things-built-honestly-rather-than-faked)
-explains why each was left honest instead of mocked.
+**The AI coach and the food camera run on a language model** —
+`qwen/qwen3.7-flash` through [OpenRouter](https://openrouter.ai). Set
+`OPENROUTER_API_KEY` in `backend/.env` to switch them on. The coach reads the
+user's own profile, risk estimate, readings, meals, check-ins and activity
+straight from the database, so nobody has to type their numbers into a chat.
+The safety guards (red flags, medication, the diagnosis question) still run
+before the model sees a message. Without a key, or with OpenRouter down, both
+fall back: the coach to fixed wording, the camera to search.
+
+**Payment** still has no real implementation and says so on screen.
+[app/README.md](app/README.md#things-built-honestly-rather-than-faked)
+explains why.
 
 The most interesting bugs found while building it are written up there too,
 including one where the API told users a dangerous glucose reading had been
@@ -97,7 +107,7 @@ python -m pytest ml/tests -q
 
 The validator enforces what a JSON Schema can't: a pack may make a safety threshold **stricter, never looser**; clinician mode is forbidden in EU/UK packs; regulated markets must use the `metabolic_health_score` wording; and a pack's clinical score must agree with the ML routing table.
 
-See [docs/internationalisation.md](docs/internationalisation.md). The **diaspora gap** it raises — a Bangladeshi in London scored against European cutoffs instead of Asian-Pacific — is resolved in the ML layer by an optional, user-declared `ancestry_cutoff_group`, and the app collects it on a screen worded as *which population's guidelines*, never as a question about race. The API does not persist it yet; that is the one contract gap still open.
+See [docs/internationalisation.md](docs/internationalisation.md). The **diaspora gap** it raises — a Bangladeshi in London scored against European cutoffs instead of Asian-Pacific — is resolved in the ML layer by an optional, user-declared `ancestry_cutoff_group`, and the app collects it on a screen worded as *which population's guidelines*, never as a question about race. The API stores it and passes it to the scorer (migration 0005).
 
 ## Reproducing the model
 

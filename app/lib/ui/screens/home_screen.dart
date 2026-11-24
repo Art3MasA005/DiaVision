@@ -47,7 +47,12 @@ const _trendFalling = 'm4 7 6 6 4-4 6 7|M14 16h6v-6';
 const _trendFlat = 'M4 12h16';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.clock});
+
+  /// Where "today" comes from. Tests pin it so the date strip, and every
+  /// screenshot of it, does not change with the calendar.
+  @visibleForTesting
+  final DateTime Function()? clock;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -68,7 +73,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
+    final now = _now();
     _selected = DateTime(now.year, now.month, now.day);
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
@@ -146,7 +151,9 @@ class _HomeScreenState extends State<HomeScreen> {
   static bool _sameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
 
-  bool get _isToday => _sameDay(_selected, DateTime.now());
+  DateTime _now() => (widget.clock ?? DateTime.now)();
+
+  bool get _isToday => _sameDay(_selected, _now());
 
   ActivityDay? get _selectedActivity {
     for (final day in _activity) {
@@ -207,10 +214,10 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Profile switcher on the start edge, greeting centred in what is left,
   /// two round controls on the end edge — the artboard's exact arrangement.
   ///
-  /// The artboard's end-edge pair is a notifications bell and Settings. There
-  /// is no notification surface in this build, and a bell wearing an unread
-  /// dot that opens nothing is a lie, so Insights takes that slot. It is also
-  /// the only way into Insights now that the quick-action row is gone.
+  /// The end-edge pair is the notifications bell and Settings. The bell
+  /// carries the unread count and opens the inbox; Insights is reached from
+  /// the weekly-report notification and from the Vitals header, as in the
+  /// handoff.
   Widget _header(AppColors c, Strings s, AppState app) {
     final name = app.profile?.displayName ?? '';
     final trimmed = name.trim();
@@ -246,12 +253,10 @@ class _HomeScreenState extends State<HomeScreen> {
         HGap(
           7,
           children: [
-            CircleIconButton(
-              icon: Icons24.clipboard,
-              size: 42,
-              shadow: true,
-              semanticLabel: s.insightsHead,
-              onPressed: () => Navigator.of(context).pushNamed(Routes.insights),
+            _BellButton(
+              unread: app.inbox.unreadCount,
+              onPressed: () =>
+                  Navigator.of(context).pushNamed(Routes.notifications),
             ),
             CircleIconButton(
               icon: Icons24.settings,
@@ -327,7 +332,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// the rest are bare, so the strip reads as a rail rather than a row of
   /// buttons competing with the cards below it.
   Widget _dayStrip(AppColors c, Strings s) {
-    final now = DateTime.now();
+    final now = _now();
     return Row(
       spacing: 6,
       children: [
@@ -452,8 +457,9 @@ class _HomeScreenState extends State<HomeScreen> {
     required RiskResult result,
   }) {
     // The ramp's 700 step is dark in light mode and light in dark mode, so the
-    // chip's ink has to follow it rather than being a fixed colour.
-    final onChip = c.isDark ? c.bg : const Color(0xFFF7FBEF);
+    // chip's ink has to follow it. The handoff's `--on-accent-700` is exactly
+    // the onAccent pair (#fffdf9 light, #201e1d dark).
+    final onChip = c.onAccent;
 
     return GestureDetector(
       onTap: () => Navigator.of(context).push(
@@ -1095,4 +1101,65 @@ class _SparkPainter extends CustomPainter {
   @override
   bool shouldRepaint(_SparkPainter old) =>
       old.values != values || old.line != line || old.rtl != rtl;
+}
+
+/// The Home bell: a round control with the unread count on its end-top
+/// corner, capped at "9+". The count clears as items are read.
+class _BellButton extends StatelessWidget {
+  const _BellButton({required this.unread, required this.onPressed});
+
+  final int unread;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final s = context.s;
+    final n = context.n;
+    final label = unread > 0
+        ? '${s.nTitle} · ${s.nUnread(n.digits('$unread'))}'
+        : s.nTitle;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        CircleIconButton(
+          icon: Icons24.bell,
+          size: 42,
+          shadow: true,
+          semanticLabel: label,
+          onPressed: onPressed,
+        ),
+        if (unread > 0)
+          PositionedDirectional(
+            top: -3,
+            end: -3,
+            child: IgnorePointer(
+              child: ExcludeSemantics(
+                child: Container(
+                  constraints: const BoxConstraints(minWidth: 19),
+                  height: 19,
+                  padding: const EdgeInsets.symmetric(horizontal: 5),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: c.accent,
+                    borderRadius: AppRadius.rPill,
+                    border: Border.all(color: c.neutral.c100, width: 2),
+                  ),
+                  child: Text(
+                    n.digits(unread > 9 ? '9' : '$unread') +
+                        (unread > 9 ? '+' : ''),
+                    style: context.t.footnote.withTabular().copyWith(
+                          fontSize: 10.5,
+                          height: 1,
+                          fontWeight: FontWeight.w800,
+                          color: c.onAccent,
+                        ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 }

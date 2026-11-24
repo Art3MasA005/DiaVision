@@ -1,11 +1,13 @@
 /// 15 · Coach.
 ///
-/// A guarded chat thread over the user's own logged data.
+/// A guarded AI chat over the user's own data.
 ///
-/// **There is no language model behind this, and the screen says so.** The
-/// banner is not a disclaimer bolted on — it is the accurate description of
-/// what the server does, and `model_backed: false` comes back in every
-/// response so the client cannot drift from it.
+/// The server hands the model this profile's data itself — profile, risk
+/// estimate, readings, meals, check-ins, activity — so the user never has to
+/// type their own numbers in. The banner says so, and says the messages are
+/// processed by an AI service. When the model is unreachable the server falls
+/// back to fixed wording and returns `model_backed: false`; the banner then
+/// switches to say that, so the client never presents fixed text as AI.
 ///
 /// Three guards run server-side, in this order: red flags before any
 /// responder sees the message; medication and dose questions deflected to a
@@ -44,6 +46,9 @@ class _CoachScreenState extends State<CoachScreen> {
   int? _remaining;
   bool _sending = false;
   bool _loading = true;
+
+  /// The last answer came from the fixed-wording fallback, not the model.
+  bool _fallback = false;
 
   @override
   void initState() {
@@ -133,6 +138,7 @@ class _CoachScreenState extends State<CoachScreen> {
           ),
         ];
         _remaining = reply.questionsRemaining;
+        if (!reply.intercepted) _fallback = !reply.modelBacked;
       });
       _scrollToEnd();
     } on CoachLimitReached {
@@ -236,7 +242,8 @@ class _CoachScreenState extends State<CoachScreen> {
                   LineIcon(Icons24.infoCircle,
                       size: 17, color: c.neutral.c600),
                   Expanded(
-                    child: P(s.coachNotAModel, style: context.t.footnote),
+                    child: P(_fallback ? s.coachNotAModel : s.coachAiBanner,
+                        style: context.t.footnote),
                   ),
                 ],
               ),
@@ -258,8 +265,10 @@ class _CoachScreenState extends State<CoachScreen> {
                     : ListView.builder(
                         controller: _scroll,
                         padding: const EdgeInsets.fromLTRB(18, 16, 18, 130),
-                        itemCount: _turns.length,
-                        itemBuilder: (context, i) => _bubble(c, _turns[i]),
+                        itemCount: _turns.length + (_sending ? 1 : 0),
+                        itemBuilder: (context, i) => i < _turns.length
+                            ? _bubble(c, _turns[i])
+                            : _thinking(c, s),
                       ),
           ),
 
@@ -295,6 +304,36 @@ class _CoachScreenState extends State<CoachScreen> {
       ),
     );
   }
+
+  /// The model takes a few seconds; say so rather than look frozen.
+  Widget _thinking(dynamic c, dynamic s) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+            decoration: BoxDecoration(
+              color: c.card,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: c.neutral.c300),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              spacing: 8,
+              children: [
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: c.accent),
+                ),
+                Text(s.coachThinking,
+                    style: context.t.caption.copyWith(color: c.neutral.c600)),
+              ],
+            ),
+          ),
+        ),
+      );
 
   Widget _bubble(dynamic c, CoachTurn turn) {
     final mine = turn.isUser;

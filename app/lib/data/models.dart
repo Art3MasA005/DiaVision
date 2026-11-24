@@ -559,26 +559,83 @@ class MealItem {
       );
 }
 
+/// When to stamp a meal logged for [day]: null for today (the server uses
+/// now), otherwise noon local — a time that lands on that calendar day in UTC
+/// too, for any offset within ±12 h.
+DateTime? eatenAtFor(DateTime day) {
+  final now = DateTime.now();
+  if (day.year == now.year && day.month == now.month && day.day == now.day) {
+    return null;
+  }
+  return DateTime(day.year, day.month, day.day, 12);
+}
+
 /// One item on its way to the server — a portion the user has confirmed.
 class MealItemDraft {
   MealItemDraft({
     this.foodId,
     required this.name,
+    this.nameLocal,
     this.quantity = 1,
     this.unit = 'serving',
     this.kcalPer100g = 0,
+    this.carbsPer100g,
+    this.proteinPer100g,
+    this.fatPer100g,
+    this.fibrePer100g,
     this.portionGrams = const {},
+    this.confidence,
+    this.fromPhoto = false,
+    this.needsReview = false,
   });
+
+  /// A camera proposal, ready for the user to confirm or edit.
+  factory MealItemDraft.fromRecognized(RecognizedItem r) {
+    final ownRow = r.foodId == null;
+    return MealItemDraft(
+      foodId: r.foodId,
+      name: r.name,
+      nameLocal: r.nameLocal,
+      quantity: r.quantity,
+      unit: r.unit,
+      kcalPer100g: r.kcalPer100g,
+      // Only an item the food table lacks sends its composition; for a table
+      // item the server's own row is the one that counts.
+      carbsPer100g: ownRow ? r.carbsPer100g : null,
+      proteinPer100g: ownRow ? r.proteinPer100g : null,
+      fatPer100g: ownRow ? r.fatPer100g : null,
+      fibrePer100g: ownRow ? r.fibrePer100g : null,
+      portionGrams: r.portionGrams,
+      confidence: r.confidence,
+      fromPhoto: true,
+      needsReview: r.needsReview,
+    );
+  }
 
   final String? foodId;
   final String name;
+  final String? nameLocal;
   double quantity;
   String unit;
 
   /// Held for the live estimate shown while editing. The server recomputes
   /// from its own composition row on save, and its answer is the one stored.
   final double kcalPer100g;
+  final double? carbsPer100g;
+  final double? proteinPer100g;
+  final double? fatPer100g;
+  final double? fibrePer100g;
   final Map<String, double> portionGrams;
+
+  /// The camera's confidence in the item's identity, when it came from a photo.
+  final double? confidence;
+  final bool fromPhoto;
+
+  /// Below the confidence floor: flagged until the user touches it.
+  bool needsReview;
+
+  String displayName(String lang) =>
+      lang == 'bn' && (nameLocal?.isNotEmpty ?? false) ? nameLocal! : name;
 
   double get grams =>
       quantity * (portionGrams[unit] ?? _genericPortionGrams[unit] ?? 120);
@@ -590,10 +647,22 @@ class MealItemDraft {
         'name': name,
         'quantity': quantity,
         'unit': unit,
+        // A photo portion has its own per-unit weight, so send the grams
+        // rather than let the server fall back to a generic unit size.
+        if (fromPhoto) 'grams': double.parse(grams.toStringAsFixed(1)),
+        if (confidence != null) 'recognition_confidence': confidence,
+        if (foodId == null && kcalPer100g > 0) ...{
+          'kcal_per_100g': kcalPer100g,
+          'carbs_g_per_100g': ?carbsPer100g,
+          'protein_g_per_100g': ?proteinPer100g,
+          'fat_g_per_100g': ?fatPer100g,
+          'fibre_g_per_100g': ?fibrePer100g,
+        },
       };
 }
 
 const _genericPortionGrams = <String, double>{
+  'plate': 250,
   'cup': 150,
   'bowl': 200,
   'spoon': 15,
@@ -668,9 +737,17 @@ class DailyTarget {
     required this.weightLossDisabled,
     required this.notes,
     this.clampReason,
+    this.goalKcal,
+    this.goalMinKcal = 1200,
+    this.goalMaxKcal = 3500,
   });
 
   final int kcal, carbsG, proteinG, fatG, fibreG;
+
+  /// The goal the user set in the goal sheet, or null for the computed one.
+  /// [kcal] is what that request became after the §5.4 rails.
+  final int? goalKcal;
+  final int goalMinKcal, goalMaxKcal;
   final int glycemicLoadCeiling, maintenanceKcal;
 
   /// True when the §5.4 safety rails moved the number. Surfaced so the UI can
@@ -692,6 +769,26 @@ class DailyTarget {
         weightLossDisabled: j['weight_loss_disabled'] as bool? ?? false,
         notes: ((j['notes'] as List?) ?? const []).map((e) => '$e').toList(),
         clampReason: j['clamp_reason'] as String?,
+        goalKcal: (j['goal_kcal'] as num?)?.toInt(),
+        goalMinKcal: (j['goal_min_kcal'] as num?)?.toInt() ?? 1200,
+        goalMaxKcal: (j['goal_max_kcal'] as num?)?.toInt() ?? 3500,
+      );
+}
+
+/// Glasses of water for one day — 8 × 250 ml by default.
+class WaterDay {
+  const WaterDay({
+    required this.glasses,
+    this.goalGlasses = 8,
+    this.mlPerGlass = 250,
+  });
+
+  final int glasses, goalGlasses, mlPerGlass;
+
+  factory WaterDay.fromJson(Map<String, dynamic> j) => WaterDay(
+        glasses: (j['glasses'] as num?)?.toInt() ?? 0,
+        goalGlasses: (j['goal_glasses'] as num?)?.toInt() ?? 8,
+        mlPerGlass: (j['ml_per_glass'] as num?)?.toInt() ?? 250,
       );
 }
 
@@ -730,10 +827,12 @@ class PlanToday {
     required this.meals,
     this.target,
     this.safetyCard,
+    this.water = const WaterDay(glasses: 0),
   });
 
   final DateTime day;
   final DayTotals totals;
+  final WaterDay water;
   final List<Meal> meals;
   final DailyTarget? target;
 
@@ -753,6 +852,9 @@ class PlanToday {
         safetyCard: j['safety_card'] == null
             ? null
             : SafetyCard.fromJson(j['safety_card'] as Map<String, dynamic>),
+        water: j['water'] == null
+            ? const WaterDay(glasses: 0)
+            : WaterDay.fromJson(j['water'] as Map<String, dynamic>),
       );
 }
 
@@ -761,19 +863,107 @@ class Recognition {
     required this.modelAvailable,
     required this.message,
     required this.confidenceFloor,
+    this.items = const [],
+    this.isFood = true,
+    this.scaleReference = false,
+    this.kcalLow = 0,
+    this.kcalHigh = 0,
   });
 
-  /// False in this build — no recognition model is wired. The client must say
-  /// so rather than implying a photo was understood.
+  /// Whether a recognition model is reachable. When false the client says so
+  /// and falls back to search, rather than implying a photo was understood.
   final bool modelAvailable;
   final String message;
   final double confidenceFloor;
+
+  /// Proposals only. Nothing is saved until the user confirms.
+  final List<RecognizedItem> items;
+  final bool isFood;
+
+  /// A spoon, hand or thumb was in the photo, so portions are better grounded.
+  final bool scaleReference;
+  final int kcalLow;
+  final int kcalHigh;
 
   factory Recognition.fromJson(Map<String, dynamic> j) => Recognition(
         modelAvailable: j['model_available'] as bool? ?? false,
         message: j['message'] as String? ?? '',
         confidenceFloor: (j['confidence_floor'] as num?)?.toDouble() ?? 0.55,
+        items: ((j['items'] as List?) ?? const [])
+            .map((e) => RecognizedItem.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        isFood: j['is_food'] as bool? ?? true,
+        scaleReference: j['scale_reference'] as bool? ?? false,
+        kcalLow: (j['kcal_low'] as num?)?.toInt() ?? 0,
+        kcalHigh: (j['kcal_high'] as num?)?.toInt() ?? 0,
       );
+}
+
+/// One food the camera thinks it saw. A proposal, never a record.
+class RecognizedItem {
+  const RecognizedItem({
+    required this.name,
+    required this.confidence,
+    required this.quantity,
+    required this.unit,
+    required this.grams,
+    required this.kcalPer100g,
+    required this.source,
+    this.nameLocal,
+    this.foodId,
+    this.box,
+    this.carbsPer100g = 0,
+    this.proteinPer100g = 0,
+    this.fatPer100g = 0,
+    this.fibrePer100g = 0,
+    this.portionGrams = const {},
+    this.needsReview = false,
+  });
+
+  final String name;
+  final String? nameLocal;
+  final double confidence;
+  final double quantity;
+  final String unit;
+  final double grams;
+  final String? foodId;
+
+  /// [x, y, w, h] in 0–1 from the photo's top-left, or null.
+  final List<double>? box;
+  final double kcalPer100g;
+  final double carbsPer100g;
+  final double proteinPer100g;
+  final double fatPer100g;
+  final double fibrePer100g;
+
+  /// `table` = composition from the food table; `ai_estimate` = the model's.
+  final String source;
+  final Map<String, double> portionGrams;
+  final bool needsReview;
+
+  factory RecognizedItem.fromJson(Map<String, dynamic> j) {
+    double d(String k) => (j[k] as num?)?.toDouble() ?? 0;
+    final box = (j['box'] as List?)?.map((e) => (e as num).toDouble()).toList();
+    return RecognizedItem(
+      name: j['name'] as String,
+      nameLocal: j['name_local'] as String?,
+      confidence: d('confidence'),
+      quantity: (j['suggested_quantity'] as num?)?.toDouble() ?? 1,
+      unit: j['suggested_unit'] as String? ?? 'serving',
+      grams: d('grams'),
+      foodId: j['food_id'] as String?,
+      box: box != null && box.length == 4 ? box : null,
+      kcalPer100g: d('kcal_per_100g'),
+      carbsPer100g: d('carbs_g_per_100g'),
+      proteinPer100g: d('protein_g_per_100g'),
+      fatPer100g: d('fat_g_per_100g'),
+      fibrePer100g: d('fibre_g_per_100g'),
+      source: j['source'] as String? ?? 'ai_estimate',
+      portionGrams: ((j['portion_grams'] as Map?) ?? const {})
+          .map((k, v) => MapEntry('$k', (v as num).toDouble())),
+      needsReview: j['needs_review'] as bool? ?? false,
+    );
+  }
 }
 
 // ── check-ins and activity ────────────────────────────────────────────
@@ -854,8 +1044,8 @@ class CoachReply {
   /// assertion, not an answer.
   final List<String> cited;
 
-  /// False in this build. There is no language model behind the coach, and the
-  /// UI says so rather than letting the user assume one.
+  /// True when the language model wrote the answer; false for a guard or the
+  /// fixed-wording fallback used when the model is unreachable.
   final bool modelBacked;
 
   final int? questionsRemaining;

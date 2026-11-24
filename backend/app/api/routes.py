@@ -17,14 +17,14 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app import schemas
 from app.auth import (
-    create_access_token, create_refresh_token, current_account_id, decode_token,
-    hash_password, verify_password,
+    create_access_token, create_refresh_token, current_account_id, current_token,
+    decode_token, hash_password, issued_before, verify_password,
 )
 from app.config import get_settings
 from app.db.models import (
@@ -32,6 +32,7 @@ from app.db.models import (
     Consent, CONSENT_VERSIONS, DailyCheckin, FoodItem, HealthProfile,
     LAB_LOOKBACK_DAYS, MealLog, MealLogItem, Profile, ProfileMembership,
     RECOGNITION_CONFIDENCE_FLOOR, Report, RiskAssessment, SafetyEvent, VitalLog,
+    FoodFavourite, WaterLog,
 )
 from app.db.session import SessionLocal, set_actor
 from app.safety import (
@@ -41,7 +42,9 @@ from app.safety import (
 from app.services import coach as coach_service
 from app.services import insights as insights_service
 from app.services import nutrition
+from app.services import food_vision, llm
 from app.services import risk as risk_service
+from app.services import user_snapshot
 
 settings = get_settings()
 router = APIRouter()
@@ -49,14 +52,24 @@ router = APIRouter()
 
 # ── dependencies ──────────────────────────────────────────────────────
 
-def db_session(account_id: uuid.UUID = Depends(current_account_id)):
+def db_session(account_id: uuid.UUID = Depends(current_account_id),
+               token: dict = Depends(current_token)):
     """An authenticated, actor-scoped transaction.
 
     `set_actor` issues SET LOCAL app.account_id, which every RLS policy reads.
+
+    It also refuses a token issued before the account's last password reset.
+    That one indexed read per request is what makes "a reset signs out every
+    other session" true for stateless tokens.
     """
     session = SessionLocal()
     try:
         set_actor(session, account_id)
+        cutoff = session.scalar(
+            select(Account.tokens_valid_after).where(Account.id == account_id))
+        if issued_before(token, cutoff):
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Session ended",
+                                headers={"WWW-Authenticate": "Bearer"})
         yield session
         session.commit()
     except Exception:
@@ -311,9 +324,22 @@ _DUMMY_HASH = hash_password("bye-bye-diabetes-timing-equaliser")
 
 
 @router.post("/auth/refresh", response_model=schemas.TokenResponse, tags=["auth"])
-def refresh(body: schemas.RefreshRequest):
+def refresh(body: schemas.RefreshRequest, session: Session = Depends(anonymous_session)):
     payload = decode_token(body.refresh_token, expect="refresh")
-    account_id = payload["sub"]
+    try:
+        account_id = uuid.UUID(payload["sub"])
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Malformed token subject") from exc
+
+    # A refresh token from before a password reset must not mint new access
+    # tokens, or the reset would sign nobody out for longer than 30 minutes.
+    set_actor(session, account_id)
+    row = session.execute(
+        select(Account.tokens_valid_after, Account.deleted_at).where(Account.id == account_id)
+    ).one_or_none()
+    if row is None or row.deleted_at is not None or issued_before(payload, row.tokens_valid_after):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Session ended")
+
     return schemas.TokenResponse(
         access_token=create_access_token(account_id),
         refresh_token=create_refresh_token(account_id),
@@ -430,7 +456,8 @@ def upsert_health_profile(
     for field in ("sex_at_birth", "height_cm", "weight_kg", "waist_cm",
                   "family_history", "physical_activity", "smoker",
                   "gestational_diabetes_history", "known_high_bp", "on_bp_meds",
-                  "history_high_glucose", "diabetes_status", "conditions"):
+                  "history_high_glucose", "diabetes_status", "conditions",
+                  "ancestry_cutoff_group"):
         setattr(health, field, getattr(body, field))
 
     # The wizard asks for age, but the record stores a date of birth so the
@@ -703,9 +730,96 @@ def search_foods(q: str = "", region: str = "bd", limit: int = 40,
     so rather than implying a licensed database.
     """
     query = select(FoodItem).where(FoodItem.region == region)
-    if q.strip():
-        query = query.where(FoodItem.name_en.ilike(f"%{q.strip()}%"))
-    return list(session.scalars(query.order_by(FoodItem.name_en).limit(min(limit, 100))))
+    term = q.strip()
+    if term:
+        # English, Bangla, or Bangla typed in Latin letters ("murgir jhol").
+        like = f"%{term}%"
+        query = query.where(or_(FoodItem.name_en.ilike(like),
+                                FoodItem.name_local.ilike(like),
+                                FoodItem.aliases.ilike(like)))
+        # Names that start with the term first, then the rest alphabetically.
+        starts = or_(FoodItem.name_en.ilike(f"{term}%"),
+                     FoodItem.name_local.ilike(f"{term}%"))
+        query = query.order_by(starts.desc(), FoodItem.name_en)
+    else:
+        query = query.order_by(FoodItem.name_en)
+    return list(session.scalars(query.limit(min(limit, 100))))
+
+
+@router.get("/foods/recent", response_model=list[schemas.FoodOut], tags=["food"])
+def recent_foods(profile_id: uuid.UUID, limit: int = 20,
+                 session: Session = Depends(db_session)):
+    """Foods this profile logged most recently, newest first."""
+    resolve_profile(session, profile_id)
+    rows = session.execute(
+        select(MealLogItem.food_id, func.max(MealLog.eaten_at).label("last"))
+        .join(MealLog, MealLog.id == MealLogItem.meal_id)
+        .where(MealLogItem.profile_id == profile_id, MealLogItem.food_id.is_not(None))
+        .group_by(MealLogItem.food_id)
+        .order_by(func.max(MealLog.eaten_at).desc())
+        .limit(min(limit, 50))
+    ).all()
+    return _foods_in_order(session, [r[0] for r in rows])
+
+
+@router.get("/foods/frequent", response_model=list[schemas.FoodOut], tags=["food"])
+def frequent_foods(profile_id: uuid.UUID, limit: int = 20,
+                   session: Session = Depends(db_session)):
+    """Foods this profile logs most often over the last 60 days."""
+    resolve_profile(session, profile_id)
+    since = date.today() - timedelta(days=60)
+    rows = session.execute(
+        select(MealLogItem.food_id, func.count().label("n"))
+        .join(MealLog, MealLog.id == MealLogItem.meal_id)
+        .where(MealLogItem.profile_id == profile_id, MealLogItem.food_id.is_not(None),
+               MealLog.eaten_on >= since)
+        .group_by(MealLogItem.food_id)
+        .order_by(func.count().desc())
+        .limit(min(limit, 50))
+    ).all()
+    return _foods_in_order(session, [r[0] for r in rows])
+
+
+@router.get("/foods/favourites", response_model=list[schemas.FoodOut], tags=["food"])
+def favourite_foods(profile_id: uuid.UUID, session: Session = Depends(db_session)):
+    resolve_profile(session, profile_id)
+    ids = list(session.scalars(
+        select(FoodFavourite.food_id).where(FoodFavourite.profile_id == profile_id)
+        .order_by(FoodFavourite.created_at.desc())
+    ))
+    return _foods_in_order(session, ids)
+
+
+@router.put("/foods/{food_id}/favourite", status_code=status.HTTP_204_NO_CONTENT,
+            tags=["food"])
+def add_favourite(food_id: uuid.UUID, profile_id: uuid.UUID,
+                  session: Session = Depends(db_session)):
+    resolve_profile(session, profile_id)
+    if session.get(FoodItem, food_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Food not found")
+    session.execute(
+        pg_insert(FoodFavourite)
+        .values(id=uuid.uuid4(), profile_id=profile_id, food_id=food_id)
+        .on_conflict_do_nothing(constraint="uq_favourite_profile_food")
+    )
+
+
+@router.delete("/foods/{food_id}/favourite", status_code=status.HTTP_204_NO_CONTENT,
+               tags=["food"])
+def remove_favourite(food_id: uuid.UUID, profile_id: uuid.UUID,
+                     session: Session = Depends(db_session)):
+    resolve_profile(session, profile_id)
+    row = session.scalar(select(FoodFavourite).where(
+        FoodFavourite.profile_id == profile_id, FoodFavourite.food_id == food_id))
+    if row is not None:
+        session.delete(row)
+
+
+def _foods_in_order(session: Session, ids: list) -> list[FoodItem]:
+    if not ids:
+        return []
+    by_id = {f.id: f for f in session.scalars(select(FoodItem).where(FoodItem.id.in_(ids)))}
+    return [by_id[i] for i in ids if i in by_id]
 
 
 def _build_items(session: Session, profile_id: uuid.UUID, meal_id: uuid.UUID,
@@ -719,14 +833,26 @@ def _build_items(session: Session, profile_id: uuid.UUID, meal_id: uuid.UUID,
     out: list[MealLogItem] = []
     for item in items:
         food_row = session.get(FoodItem, item.food_id) if item.food_id else None
-        food = {
-            "kcal_per_100g": getattr(food_row, "kcal_per_100g", 0.0),
-            "carbs_g_per_100g": getattr(food_row, "carbs_g_per_100g", 0.0),
-            "protein_g_per_100g": getattr(food_row, "protein_g_per_100g", 0.0),
-            "fat_g_per_100g": getattr(food_row, "fat_g_per_100g", 0.0),
-            "fibre_g_per_100g": getattr(food_row, "fibre_g_per_100g", 0.0),
-            "glycemic_index": getattr(food_row, "glycemic_index", None),
-        }
+        if food_row is not None:
+            food = {
+                "kcal_per_100g": food_row.kcal_per_100g,
+                "carbs_g_per_100g": food_row.carbs_g_per_100g,
+                "protein_g_per_100g": food_row.protein_g_per_100g,
+                "fat_g_per_100g": food_row.fat_g_per_100g,
+                "fibre_g_per_100g": food_row.fibre_g_per_100g,
+                "glycemic_index": food_row.glycemic_index,
+            }
+        else:
+            # No table row: the camera's estimate for a dish the table lacks.
+            # Never a glycemic index — a guessed GL is worse than none.
+            food = {
+                "kcal_per_100g": item.kcal_per_100g or 0.0,
+                "carbs_g_per_100g": item.carbs_g_per_100g or 0.0,
+                "protein_g_per_100g": item.protein_g_per_100g or 0.0,
+                "fat_g_per_100g": item.fat_g_per_100g or 0.0,
+                "fibre_g_per_100g": item.fibre_g_per_100g or 0.0,
+                "glycemic_index": None,
+            }
         grams = item.grams or nutrition.grams_for(
             item.quantity, item.unit, getattr(food_row, "portion_grams", None)
         )
@@ -819,33 +945,232 @@ def delete_meal(meal_id: uuid.UUID, session: Session = Depends(db_session)):
     session.delete(meal)
 
 
+def _owned_item(session: Session, meal_id: uuid.UUID, item_id: uuid.UUID):
+    """The meal and the item, or 404. RLS already hides other profiles' rows."""
+    meal = session.get(MealLog, meal_id)
+    item = session.get(MealLogItem, item_id)
+    if meal is None or item is None or item.meal_id != meal.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Item not found")
+    return meal, item
+
+
+@router.patch("/meals/{meal_id}/items/{item_id}", response_model=schemas.MealOut,
+              tags=["food"])
+def update_meal_item(meal_id: uuid.UUID, item_id: uuid.UUID,
+                     body: schemas.MealItemPatch, request: Request,
+                     account_id: uuid.UUID = Depends(current_account_id),
+                     session: Session = Depends(db_session)):
+    """The tracker's ± on a logged portion.
+
+    Everything is scaled from the stored row rather than looked up again, for
+    the same reason it is stored at all: a composition value corrected later
+    must not silently change what this meal was.
+    """
+    meal, item = _owned_item(session, meal_id, item_id)
+    profile = resolve_profile(session, meal.profile_id)
+    factor = body.quantity / item.quantity if item.quantity else 1.0
+    grams = item.grams * factor
+    if grams > 5000:
+        raise HTTPException(422, "That portion is larger than the app can log.")
+    item.quantity = body.quantity
+    item.grams = round(grams, 1)
+    item.kcal = round(item.kcal * factor)
+    item.carbs_g = round(item.carbs_g * factor, 1)
+    item.protein_g = round(item.protein_g * factor, 1)
+    item.fat_g = round(item.fat_g * factor, 1)
+    item.fibre_g = round(item.fibre_g * factor, 1)
+    if item.glycemic_load is not None:
+        item.glycemic_load = round(item.glycemic_load * factor, 1)
+    session.flush()
+    session.refresh(meal)
+    audit(session, profile, account_id, "write", "meal_log", request)
+    out = _meal_out(meal)
+    commit_before_responding(session)
+    return out
+
+
+@router.delete("/meals/{meal_id}/items/{item_id}",
+               status_code=status.HTTP_204_NO_CONTENT, tags=["food"])
+def delete_meal_item(meal_id: uuid.UUID, item_id: uuid.UUID,
+                     session: Session = Depends(db_session)):
+    """Remove one item. A meal left with no items is removed with it."""
+    meal, item = _owned_item(session, meal_id, item_id)
+    session.delete(item)
+    session.flush()
+    session.refresh(meal)
+    if not meal.items:
+        session.delete(meal)
+
+
+@router.post("/meals/copy", response_model=list[schemas.MealOut],
+             status_code=status.HTTP_201_CREATED, tags=["food"])
+def copy_meals(body: schemas.CopyMealsIn, request: Request,
+               account_id: uuid.UUID = Depends(current_account_id),
+               session: Session = Depends(db_session)):
+    """'Same as yesterday'. Copies the stored rows, nutrition and all."""
+    require_medical_disclaimer(session, account_id)
+    profile = resolve_profile(session, body.profile_id)
+    query = select(MealLog).where(MealLog.profile_id == profile.id,
+                                  MealLog.eaten_on == body.from_day)
+    if body.slot:
+        query = query.where(MealLog.slot == body.slot)
+    sources = list(session.scalars(query.order_by(MealLog.eaten_at)))
+    if not sources:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, {
+            "reason": "nothing_to_copy",
+            "message": "Nothing was logged for that meal on that day.",
+        })
+
+    shift = body.to_day - body.from_day
+    created: list[MealLog] = []
+    for src in sources:
+        eaten_at = src.eaten_at + shift
+        meal = MealLog(profile_id=profile.id, slot=src.slot, eaten_at=eaten_at,
+                       eaten_on=body.to_day, note=src.note,
+                       entry_method=src.entry_method)
+        session.add(meal)
+        session.flush()
+        for i in src.items:
+            session.add(MealLogItem(
+                meal_id=meal.id, profile_id=profile.id, food_id=i.food_id,
+                name_snapshot=i.name_snapshot, quantity=i.quantity, unit=i.unit,
+                grams=i.grams, kcal=i.kcal, carbs_g=i.carbs_g, protein_g=i.protein_g,
+                fat_g=i.fat_g, fibre_g=i.fibre_g, glycemic_load=i.glycemic_load,
+                recognition_confidence=i.recognition_confidence,
+            ))
+        created.append(meal)
+    session.flush()
+    for m in created:
+        session.refresh(m)
+    audit(session, profile, account_id, "write", "meal_log", request)
+    out = [_meal_out(m) for m in created]
+    commit_before_responding(session)
+    return out
+
+
+# ── water ─────────────────────────────────────────────────────────────
+
+WATER_GOAL_GLASSES = 8
+
+
+def _water_for(session: Session, profile_id: uuid.UUID, day: date) -> schemas.WaterOut:
+    row = session.scalar(select(WaterLog).where(
+        WaterLog.profile_id == profile_id, WaterLog.logged_on == day))
+    return schemas.WaterOut(
+        day=day, glasses=0 if row is None else row.glasses,
+        goal_glasses=WATER_GOAL_GLASSES,
+        ml_per_glass=250 if row is None else row.ml_per_glass,
+    )
+
+
+@router.put("/water", response_model=schemas.WaterOut, tags=["food"])
+def set_water(body: schemas.WaterIn, session: Session = Depends(db_session)):
+    """Glasses of water for a day. Upserted — the tracker sends the new total."""
+    profile = resolve_profile(session, body.profile_id)
+    day = body.day or date.today()
+    session.execute(
+        pg_insert(WaterLog)
+        .values(id=uuid.uuid4(), profile_id=profile.id, logged_on=day,
+                glasses=body.glasses)
+        .on_conflict_do_update(constraint="uq_water_profile_day",
+                               set_={"glasses": body.glasses,
+                                     "updated_at": func.now()})
+    )
+    session.flush()
+    out = _water_for(session, profile.id, day)
+    commit_before_responding(session)
+    return out
+
+
 @router.post("/food/recognize", response_model=schemas.RecognizeOut, tags=["food"])
 def recognize_food(profile_id: uuid.UUID,
+                   body: schemas.RecognizeIn | None = None,
                    account_id: uuid.UUID = Depends(current_account_id),
                    session: Session = Depends(db_session)):
-    """Photo recognition.
+    """Photo → proposed items. **Proposals only; nothing is saved here.**
 
-    **No model is wired in this build**, and `packs/bd.json` ships
-    `camera_food_logging: false`. Rather than return invented items — which on
-    a food-and-blood-sugar screen would be actively harmful — this returns an
-    empty proposal list and says plainly that recognition is unavailable, so
-    the client falls back to manual entry.
+    The vision model on OpenRouter names each food, matches it to the region's
+    food table where it can, and estimates the portion. The user confirms or
+    edits every item before `POST /meals` stores anything.
 
-    The endpoint exists now so the contract, the confidence floor and the
-    confirm-before-save flow are settled before a model arrives.
+    Called with no body it is a capability probe: the client asks whether a
+    model is reachable before opening the camera.
+
+    The photo is forwarded to the model and **not stored** by this server.
     """
     require_medical_disclaimer(session, account_id)
     profile = resolve_profile(session, profile_id)
     pack = risk_service.region_pack(profile.region_pack)
     enabled = bool(pack.get("features", {}).get("camera_food_logging"))
+    available = enabled and llm.is_configured()
+
+    def unavailable(message: str) -> schemas.RecognizeOut:
+        return schemas.RecognizeOut(
+            items=[], model_available=False, message=message,
+            confidence_floor=RECOGNITION_CONFIDENCE_FLOOR,
+        )
+
+    if not enabled:
+        return unavailable("Photo food logging is switched off for this region.")
+    if not available:
+        return unavailable("Photo recognition is not available right now — add the "
+                           "items by hand. Every item is yours to confirm either way.")
+    if body is None:
+        return schemas.RecognizeOut(
+            items=[], model_available=True, message="",
+            confidence_floor=RECOGNITION_CONFIDENCE_FLOOR,
+        )
+
+    try:
+        image = food_vision.decode_image(body.image_base64)
+    except food_vision.InvalidImage:
+        raise HTTPException(422, {
+            "reason": "invalid_image",
+            "message": "That file is not a photo the app can read.",
+        })
+
+    foods = [
+        {
+            "id": f.id, "name_en": f.name_en, "name_local": f.name_local,
+            "kcal_per_100g": f.kcal_per_100g, "carbs_g_per_100g": f.carbs_g_per_100g,
+            "protein_g_per_100g": f.protein_g_per_100g, "fat_g_per_100g": f.fat_g_per_100g,
+            "fibre_g_per_100g": f.fibre_g_per_100g, "glycemic_index": f.glycemic_index,
+            "portion_grams": f.portion_grams or {},
+        }
+        for f in session.scalars(
+            select(FoodItem).where(FoodItem.region == profile.region_pack).limit(400))
+    ]
+
+    try:
+        result = food_vision.recognize(image, foods)
+    except llm.LLMUnavailable:
+        return unavailable("The photo could not be analysed just now — try again, "
+                           "or add the items by hand.")
+
+    items = [
+        schemas.RecognizedItem(
+            name=p.name, name_local=p.name_local, confidence=round(p.confidence, 2),
+            suggested_quantity=p.quantity, suggested_unit=p.unit, food_id=p.food_id,
+            grams=p.grams, box=p.box,
+            kcal_per_100g=p.kcal_per_100g, carbs_g_per_100g=p.carbs_g_per_100g,
+            protein_g_per_100g=p.protein_g_per_100g, fat_g_per_100g=p.fat_g_per_100g,
+            fibre_g_per_100g=p.fibre_g_per_100g, glycemic_index=p.glycemic_index,
+            source=p.source, portion_grams=p.portion_grams,
+            needs_review=p.confidence < RECOGNITION_CONFIDENCE_FLOOR,
+        )
+        for p in result.items
+    ]
+    total_kcal = sum(i.kcal_per_100g * i.grams / 100 for i in items)
+    low, high = nutrition.estimate_band(total_kcal, "photo")
     return schemas.RecognizeOut(
-        items=[],
-        model_available=False,
-        message=("Photo recognition is not available yet — add the items by hand. "
-                 "Every item is yours to confirm either way."
-                 if enabled else
-                 "Photo food logging is switched off for this region."),
+        items=items, model_available=True,
+        message="" if items else (
+            "No food found in that photo. Try again from straight above, "
+            "or add the items by hand."),
         confidence_floor=RECOGNITION_CONFIDENCE_FLOOR,
+        is_food=result.is_food and bool(items),
+        scale_reference=result.scale_reference,
+        kcal_low=low, kcal_high=high,
     )
 
 
@@ -868,6 +1193,7 @@ def _target_for(session: Session, profile: Profile) -> schemas.TargetOut | None:
         weight_kg=health.weight_kg, height_cm=health.height_cm, age=age,
         activity=health.physical_activity or "sedentary",
         goal=health.goal_type or "maintain", bmi=bmi,
+        requested_kcal=health.kcal_goal,
     )
     return schemas.TargetOut(
         kcal=target.kcal, carbs_g=target.carbs_g, protein_g=target.protein_g,
@@ -876,7 +1202,31 @@ def _target_for(session: Session, profile: Profile) -> schemas.TargetOut | None:
         maintenance_kcal=target.maintenance_kcal, was_clamped=target.was_clamped,
         clamp_reason=target.clamp_reason,
         weight_loss_disabled=target.weight_loss_disabled, notes=target.notes,
+        goal_kcal=health.kcal_goal,
+        goal_min_kcal=nutrition.GOAL_MIN_KCAL, goal_max_kcal=nutrition.GOAL_MAX_KCAL,
     )
+
+
+@router.put("/plan/goal", response_model=schemas.TargetOut | None, tags=["food"])
+def set_goal(body: schemas.GoalIn, request: Request,
+             account_id: uuid.UUID = Depends(current_account_id),
+             session: Session = Depends(db_session)):
+    """The goal sheet. The value is a request: the §5.4 rails still apply, so
+    the target that comes back may differ, and says why when it does."""
+    require_medical_disclaimer(session, account_id)
+    profile = resolve_profile(session, body.profile_id)
+    health = session.get(HealthProfile, profile.id)
+    if health is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, {
+            "reason": "health_profile_required",
+            "message": "Complete your profile before setting a goal.",
+        })
+    health.kcal_goal = body.kcal
+    audit(session, profile, account_id, "write", "health_profile", request)
+    session.flush()
+    out = _target_for(session, profile)
+    commit_before_responding(session)
+    return out
 
 
 @router.get("/plan/today", response_model=schemas.PlanTodayOut, tags=["food"])
@@ -925,6 +1275,7 @@ def plan_today(profile_id: uuid.UUID, on: date | None = None,
             kcal_low=low, kcal_high=high,
         ),
         meals=meal_outs,
+        water=_water_for(session, profile.id, day),
         safety_card=None if card is None else schemas.SafetyCardOut(
             trigger=card.trigger, severity=card.severity.value, title=card.title,
             body=card.body, actions=card.actions,
@@ -1121,6 +1472,13 @@ def coach_message(body: schemas.CoachIn, request: Request,
     profile = resolve_profile(session, body.profile_id)
     account = session.get(Account, account_id)
 
+    # The user's whole picture, read here so they never have to type it into
+    # the chat. Built before this turn is stored, so the history it carries is
+    # the conversation up to (not including) this message.
+    target = _target_for(session, profile)
+    context = user_snapshot.build(
+        session, profile, target=None if target is None else target.model_dump())
+
     session.add(CoachMessage(profile_id=profile.id, role="user", body=body.message))
 
     # Safety first, and outside the cap.
@@ -1148,7 +1506,6 @@ def coach_message(body: schemas.CoachIn, request: Request,
                 "questions_remaining": 0,
             })
 
-    context = _coach_context(session, profile.id)
     reply = coach_service.respond(body.message, context)
 
     session.add(CoachMessage(profile_id=profile.id, role="coach",
@@ -1175,43 +1532,8 @@ def coach_message(body: schemas.CoachIn, request: Request,
             body=card.body, actions=card.actions,
             emergency_number=pack.get("safety_thresholds", {}).get("emergency_number"),
         ),
-        model_backed=False,
+        model_backed=reply.model_backed,
     )
-
-
-def _coach_context(session: Session, profile_id: uuid.UUID) -> dict:
-    """Only this profile's own recent figures. Nothing is invented here."""
-    since = date.today() - timedelta(days=14)
-    kcal_rows = session.execute(
-        select(MealLog.eaten_on, func.sum(MealLogItem.kcal))
-        .join(MealLogItem, MealLogItem.meal_id == MealLog.id)
-        .where(MealLog.profile_id == profile_id, MealLog.eaten_on >= since)
-        .group_by(MealLog.eaten_on)
-    ).all()
-    steps = session.scalars(
-        select(ActivityLog.steps).where(ActivityLog.profile_id == profile_id,
-                                        ActivityLog.activity_on >= since)
-    ).all()
-    glucose = session.scalar(
-        select(VitalLog).where(VitalLog.profile_id == profile_id,
-                               VitalLog.type == "glucose")
-        .order_by(VitalLog.recorded_at.desc()).limit(1)
-    )
-    risk = session.scalar(
-        select(RiskAssessment).where(RiskAssessment.profile_id == profile_id)
-        .order_by(RiskAssessment.taken_at.desc()).limit(1)
-    )
-    kcal = [float(k or 0) for _, k in kcal_rows if k]
-    return {
-        "mean_kcal": sum(kcal) / len(kcal) if kcal else None,
-        "mean_steps": sum(steps) / len(steps) if steps else None,
-        "latest_glucose": None if glucose is None else round(glucose.value, 1),
-        "latest_risk_range": (
-            None if risk is None
-            else f"{round(risk.confidence_low * 100)}–{round(risk.confidence_high * 100)}%"
-        ),
-        "days_logged": len(kcal),
-    }
 
 
 @router.get("/coach/history", response_model=list[schemas.CoachTurn], tags=["coach"])
@@ -1495,7 +1817,8 @@ def export_account(account_id: uuid.UUID = Depends(current_account_id),
         health_profiles=dump(health, ["profile_id", "sex_at_birth", "height_cm",
                                       "weight_kg", "waist_cm", "family_history",
                                       "physical_activity", "smoker",
-                                      "diabetes_status", "updated_at"]),
+                                      "diabetes_status", "ancestry_cutoff_group",
+                                      "updated_at"]),
         risk_assessments=dump(risks, ["id", "taken_at", "tier", "risk_probability",
                                       "risk_band", "confidence_low", "confidence_high",
                                       "model_version", "validation_status"]),

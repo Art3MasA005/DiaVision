@@ -14,6 +14,8 @@ import 'package:diavision/core/tokens.dart';
 import 'package:diavision/core/typography.dart';
 import 'package:diavision/data/api.dart';
 import 'package:diavision/data/models.dart';
+import 'package:diavision/data/notifications.dart';
+import 'package:diavision/data/password_reset.dart';
 import 'package:diavision/data/store.dart';
 import 'package:diavision/l10n/strings.dart';
 import 'package:diavision/state/app_state.dart';
@@ -23,6 +25,8 @@ import 'package:diavision/ui/illustrations/waist_diagram.dart';
 import 'package:diavision/ui/widgets/kit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 /// Words banned everywhere in user-facing copy (rule 2), plus the sensor claim
 /// from rule 3. Matched on word boundaries, so "secure" does not trip "cure"
@@ -302,6 +306,110 @@ void main() {
     });
   });
 
+  group('notifications inbox (handoff F9, §3.4)', () {
+    test('no glucose, weight or risk value in any title or body', () {
+      // A number next to a unit, or a percentage, is exactly what a lock
+      // screen must never show.
+      final value = RegExp(
+          r'\d[\d.,]*\s*(%|mmol|mg|kg|lb|cm|bpm)|[০-৯][০-৯.,]*\s*(%|কেজি)',
+          caseSensitive: false);
+      for (final x in Inbox.sample().items) {
+        for (final lang in ['en', 'bn']) {
+          final (title, body, _) = x.copyFor(lang);
+          expect(value.hasMatch('$title $body'), isFalse,
+              reason: '${x.id} ($lang): $title — $body');
+        }
+      }
+    });
+
+    test('the badge count follows read, mark-all and dismiss', () {
+      final inbox = Inbox.sample();
+      final start = inbox.unreadCount;
+      expect(start, greaterThan(0));
+
+      final first = inbox.items.firstWhere((x) => x.unread);
+      inbox.markRead(first.id);
+      expect(inbox.unreadCount, start - 1);
+      inbox.markRead(first.id); // idempotent
+      expect(inbox.unreadCount, start - 1);
+
+      final other = inbox.items.firstWhere((x) => x.unread);
+      inbox.dismiss(other.id);
+      expect(inbox.items.any((x) => x.id == other.id), isFalse);
+      expect(inbox.unreadCount, start - 2);
+
+      inbox.markAllRead();
+      expect(inbox.unreadCount, 0);
+    });
+
+    test('a change rebuilds whatever reads app state', () async {
+      SharedPreferences.setMockInitialValues({});
+      final state = AppState(
+        api: Api(
+          baseUrl: 'http://127.0.0.1:1/api/v1',
+          readTokens: () => null,
+          writeTokens: (_) async {},
+        ),
+        secure: SecureStore(),
+        prefs: await PrefsStore.open(),
+      );
+      var notified = 0;
+      state.addListener(() => notified++);
+      state.inbox.markAllRead();
+      expect(notified, 1);
+    });
+  });
+
+  group('password reset never claims success it did not get', () {
+    final calls = <String>[];
+    Api apiAnswering(int status, Object body) => Api(
+          baseUrl: 'http://x/api/v1',
+          client: MockClient((req) async {
+            calls.add('${req.method} ${req.url.path}');
+            expect(req.headers.containsKey('authorization'), isFalse,
+                reason: 'reset calls carry no session');
+            return http.Response(jsonEncode(body), status,
+                headers: {'content-type': 'application/json'});
+          }),
+          readTokens: () => null,
+          writeTokens: (_) async {},
+        );
+
+    test('the three calls go to the reset endpoints', () async {
+      calls.clear();
+      final reset = HttpPasswordReset(
+          apiAnswering(200, {'reset_token': 'tok', 'resend_after_seconds': 60}));
+      await reset.requestCode('a@b.co');
+      expect(await reset.verifyCode('a@b.co', '123456'), 'tok');
+      await reset.setPassword('tok', 'password1');
+      expect(calls, [
+        'POST /api/v1/auth/password/reset-request',
+        'POST /api/v1/auth/password/reset-verify',
+        'POST /api/v1/auth/password/reset',
+      ]);
+    });
+
+    test('a wrong code surfaces the server reason, not a success', () async {
+      final reset = HttpPasswordReset(apiAnswering(400, {
+        'detail': {'reason': 'invalid_code', 'message': 'wrong'}
+      }));
+      await expectLater(
+          reset.verifyCode('a@b.co', '000000'),
+          throwsA(isA<ServerFailure>()
+              .having((f) => f.message, 'reason', 'invalid_code')));
+    });
+
+    test('no email service: refused, never pretended', () async {
+      final reset = HttpPasswordReset(apiAnswering(503, {
+        'detail': {'reason': 'reset_unavailable', 'message': 'off'}
+      }));
+      await expectLater(
+          reset.requestCode('a@b.co'),
+          throwsA(isA<ServerFailure>()
+              .having((f) => f.message, 'reason', 'reset_unavailable')));
+    });
+  });
+
   group('rule 9 — no text baked into artwork', () {
     testWidgets('the waist diagram paints no text and carries a description',
         (tester) async {
@@ -459,4 +567,58 @@ Map<String, String> _allStrings(Strings s) => {
       'offlineBanner': s.offlineBanner,
       'errorHead': s.errorHead,
       'errorBody': s.errorBody,
+      'fpBack': s.fpBack,
+      'fp1Head': s.fp1Head,
+      'fp1Sub': s.fp1Sub,
+      'fp1Cta': s.fp1Cta,
+      'fp1Note': s.fp1Note,
+      'fp2Head': s.fp2Head,
+      'fp2Sub': s.fp2Sub,
+      'fp2Change': s.fp2Change,
+      'fp2Label': s.fp2Label,
+      'fp2Resend': s.fp2Resend,
+      'fp2ResendBtn': s.fp2ResendBtn,
+      'fp2Cta': s.fp2Cta,
+      'fp3Head': s.fp3Head,
+      'fp3Sub': s.fp3Sub,
+      'fp3New': s.fp3New,
+      'fp3Confirm': s.fp3Confirm,
+      'fp3Ph': s.fp3Ph,
+      'fp3Ph2': s.fp3Ph2,
+      'fp3R1': s.fp3R1,
+      'fp3R2': s.fp3R2,
+      'fp3R3': s.fp3R3,
+      'fp3Cta': s.fp3Cta,
+      'fp4Head': s.fp4Head,
+      'fp4Sub': s.fp4Sub,
+      'fp4Cta': s.fp4Cta,
+      'fpToastEmail': s.fpToastEmail,
+      'fpToastSent': s.fpToastSent,
+      'fpToastResent': s.fpToastResent,
+      'fpToastCode': s.fpToastCode,
+      'fpToastPass': s.fpToastPass,
+      'fpToastDone': s.fpToastDone,
+      'fpUnavailable': s.fpUnavailable,
+      'nTitle': s.nTitle,
+      'nMarkAll': s.nMarkAll,
+      'nToday': s.nToday,
+      'nEarlier': s.nEarlier,
+      'nFilterAll': s.nFilterAll,
+      'nFilterReminders': s.nFilterReminders,
+      'nFilterInsights': s.nFilterInsights,
+      'nFilterAccount': s.nFilterAccount,
+      'nEmptyHead': s.nEmptyHead,
+      'nEmptySub': s.nEmptySub,
+      'nSettings': s.nSettings,
+      'nDismiss': s.nDismiss,
+      'nNew': s.nNew,
+      'nToastAll': s.nToastAll,
+      'nPrivacy': s.nPrivacy,
+      'fpStepLabel': s.fpStepLabel('1', '3'),
+      'nUnread': s.nUnread('3'),
+      // The sample inbox ships to users until the API lands, so it is copy too.
+      for (final x in Inbox.sample().items) ...{
+        'notif.${x.id}.title': x.copyFor(s.lang).$1,
+        'notif.${x.id}.body': x.copyFor(s.lang).$2,
+      },
     };

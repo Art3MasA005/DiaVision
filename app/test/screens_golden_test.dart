@@ -14,22 +14,28 @@ import 'dart:io';
 import 'package:diavision/core/theme.dart';
 import 'package:diavision/data/api.dart';
 import 'package:diavision/data/models.dart';
+import 'package:diavision/data/password_reset.dart';
 import 'package:diavision/data/store.dart';
+import 'package:diavision/l10n/strings.dart';
 import 'package:diavision/state/app_state.dart';
 import 'package:diavision/ui/screens/activity_screen.dart';
+import 'package:diavision/ui/screens/add_food_screen.dart';
 import 'package:diavision/ui/screens/auth_screen.dart';
 import 'package:diavision/ui/screens/checkin_screen.dart';
 import 'package:diavision/ui/screens/coach_screen.dart';
 import 'package:diavision/ui/screens/disclaimer_screen.dart';
 import 'package:diavision/ui/screens/edge_states.dart';
+import 'package:diavision/ui/screens/forgot_password_screen.dart';
 import 'package:diavision/ui/screens/home_screen.dart';
 import 'package:diavision/ui/screens/insights_screen.dart';
 import 'package:diavision/ui/screens/labs_screen.dart';
+import 'package:diavision/ui/screens/notifications_screen.dart';
 import 'package:diavision/ui/screens/paywall_screen.dart';
 import 'package:diavision/ui/screens/population_screen.dart';
 import 'package:diavision/ui/screens/risk_screen.dart';
 import 'package:diavision/ui/screens/scan_screen.dart';
 import 'package:diavision/ui/screens/settings_screen.dart';
+import 'package:diavision/ui/screens/splash_screen.dart';
 import 'package:diavision/ui/screens/tracker_screen.dart';
 import 'package:diavision/ui/screens/vitals_screen.dart';
 import 'package:diavision/ui/screens/waist_guide_screen.dart';
@@ -118,7 +124,7 @@ const _planToday = {
     'protein_g': 105,
     'fat_g': 82,
     'fibre_g': 29,
-    'glycemic_load_ceiling': 100,
+    'glycemic_load_ceiling': 80,
     'maintenance_kcal': 2500,
     'was_clamped': false,
     'clamp_reason': null,
@@ -216,6 +222,7 @@ const _planToday = {
     },
   ],
   'safety_card': null,
+  'water': {'day': '2026-08-15', 'glasses': 5, 'goal_glasses': 8, 'ml_per_glass': 250},
 };
 
 const _billingPlans = {
@@ -350,11 +357,61 @@ List<Object?> _listFor(String path) {
   if (path.endsWith('/risk/history')) return _riskHistory;
   if (path.endsWith('/activity')) return _activityWeek;
   if (path.endsWith('/foods')) return _foods;
+  if (path.endsWith('/foods/recent')) return _foods;
+  if (path.endsWith('/foods/frequent')) return _foods.reversed.toList();
+  if (path.endsWith('/foods/favourites')) return _foods.take(1).toList();
   if (path.endsWith('/vitals')) return _vitals;
   if (path.endsWith('/profiles')) return _profiles;
   if (path.endsWith('/meals')) return _planToday['meals'] as List;
   return const [];
 }
+
+final _scanProposals = Recognition(
+  modelAvailable: true,
+  message: '',
+  confidenceFloor: 0.55,
+  scaleReference: true,
+  kcalLow: 470,
+  kcalHigh: 770,
+  items: [
+    RecognizedItem.fromJson({
+      'name': 'Rice, boiled',
+      'name_local': 'ভাত',
+      'confidence': 0.92,
+      'suggested_quantity': 1.5,
+      'suggested_unit': 'cup',
+      'grams': 240,
+      'food_id': '00000000-0000-0000-0000-000000000001',
+      'kcal_per_100g': 130,
+      'source': 'table',
+      'portion_grams': {'cup': 160, 'plate': 250},
+    }),
+    RecognizedItem.fromJson({
+      'name': 'Lentil dal',
+      'name_local': 'ডাল',
+      'confidence': 0.81,
+      'suggested_quantity': 1,
+      'suggested_unit': 'bowl',
+      'grams': 180,
+      'food_id': '00000000-0000-0000-0000-000000000002',
+      'kcal_per_100g': 104,
+      'source': 'table',
+      'portion_grams': {'bowl': 180, 'cup': 150},
+    }),
+    RecognizedItem.fromJson({
+      'name': 'Shorshe ilish',
+      'name_local': 'সর্ষে ইলিশ',
+      'confidence': 0.42,
+      'suggested_quantity': 1,
+      'suggested_unit': 'piece',
+      'grams': 110,
+      'kcal_per_100g': 260,
+      'source': 'ai_estimate',
+      'portion_grams': {'piece': 110},
+      'needs_review': true,
+    }),
+  ],
+);
 
 http.Client _cannedClient() => MockClient((request) async {
       final path = request.url.path;
@@ -377,6 +434,14 @@ http.Client _cannedClient() => MockClient((request) async {
           'units_default': {'glucose': 'mmol/L'},
           'safety_thresholds': {'emergency_number': '999', 'min_age': 18},
         };
+      } else if (path.endsWith('/food/recognize')) {
+        // The capability probe: a model is reachable.
+        body = {
+          'items': <dynamic>[],
+          'model_available': true,
+          'message': '',
+          'confidence_floor': 0.55,
+        };
       } else if (path.endsWith('/plan/today')) {
         body = _planToday;
       } else if (path.endsWith('/billing/plans')) {
@@ -393,6 +458,9 @@ http.Client _cannedClient() => MockClient((request) async {
           path.endsWith('/profiles') ||
           path.endsWith('/vitals') ||
           path.endsWith('/foods') ||
+          path.endsWith('/foods/recent') ||
+          path.endsWith('/foods/frequent') ||
+          path.endsWith('/foods/favourites') ||
           path.endsWith('/meals')) {
         return http.Response.bytes(utf8.encode(jsonEncode(_listFor(path))), 200,
             headers: {'content-type': 'application/json; charset=utf-8'});
@@ -440,6 +508,9 @@ void _mockSecureStorage() {
   );
 }
 
+/// The goldens' fixed morning: the scan screen picks breakfast from it.
+DateTime _morning() => DateTime(2026, 8, 15, 9);
+
 Future<AppState> _state(String lang) async {
   _mockSecureStorage();
   SharedPreferences.setMockInitialValues({'bbd.lang': lang});
@@ -451,7 +522,11 @@ Future<AppState> _state(String lang) async {
     readTokens: () => secure.cached,
     writeTokens: secure.save,
   );
-  final state = AppState(api: api, secure: secure, prefs: prefs);
+  final state = AppState(
+      api: api,
+      secure: secure,
+      prefs: prefs,
+      passwordReset: const DemoPasswordReset());
   await state.load(lang);
   state.profile = const Profile(
     id: '38d83ef7-4dfe-41cc-9fd0-9c27aacc2e9f',
@@ -506,6 +581,30 @@ void main() {
     );
   }
 
+  /// The splash at [at] into its intro. It schedules its own exit, so tear
+  /// the tree down afterwards and let the timer fire into an unmounted state.
+  Future<void> shootSplash(WidgetTester t, String name, Duration at,
+      {String lang = 'en', bool dark = false}) async {
+    await shoot(t,
+        name: name,
+        screen: const SplashScreen(),
+        lang: lang,
+        dark: dark,
+        settle: at);
+    await t.pumpWidget(const SizedBox());
+    await t.pump(const Duration(seconds: 3));
+  }
+
+  // 2.45s: every stage has landed and the name's sheen is mid-sweep.
+  testWidgets('01 splash — English', (t) async {
+    await shootSplash(t, '01_splash_en', const Duration(milliseconds: 2450));
+  });
+
+  testWidgets('01 splash — Bangla, dark', (t) async {
+    await shootSplash(t, '01_splash_bn_dark', const Duration(milliseconds: 2450),
+        lang: 'bn', dark: true);
+  });
+
   testWidgets('02 auth — login, English', (t) async {
     await shoot(t, name: '02_auth_login_en', screen: const AuthScreen());
   });
@@ -519,6 +618,104 @@ void main() {
         // the name field and the Terms tick, which is the half that matters.
         before: (tester) async {
           await tester.tap(find.text('নিবন্ধন'));
+          await tester.pumpAndSettle();
+        });
+  });
+
+  // ── 02b forgot password ─────────────────────────────────────────────
+
+  /// Walk the reset flow forward with the debug-build demo reset service.
+  Future<void> fpAdvance(WidgetTester t, String cta) async {
+    await t.tap(find.text(cta));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 700)); // the demo's pause
+    // Let the toast in, time out (2.6s) and out again; each step is its own
+    // frame because a pending timer alone does not schedule one.
+    for (var i = 0; i < 4; i++) {
+      await t.pump(const Duration(seconds: 1));
+    }
+    await t.pumpAndSettle();
+  }
+
+  testWidgets('02b forgot — step 1, English', (t) async {
+    await shoot(t,
+        name: '02b_forgot_step1_en',
+        screen: const ForgotPasswordScreen(initialEmail: 'rumana@example.com'));
+  });
+
+  testWidgets('02b forgot — step 2 with Bengali digits, Bangla', (t) async {
+    final s = Strings.of('bn');
+    await shoot(t,
+        name: '02b_forgot_step2_bn',
+        lang: 'bn',
+        screen: const ForgotPasswordScreen(initialEmail: 'rumana@example.com'),
+        before: (tester) async {
+          await fpAdvance(tester, s.fp1Cta);
+          // Typed in Bengali digits; stored as ASCII, shown in Bengali.
+          await tester.enterText(find.byType(TextField), '১২৩');
+          await tester.pumpAndSettle();
+        });
+  });
+
+  testWidgets('02b forgot — step 3, rules part met, English', (t) async {
+    final s = Strings.of('en');
+    await shoot(t,
+        name: '02b_forgot_step3_en',
+        screen: const ForgotPasswordScreen(initialEmail: 'rumana@example.com'),
+        before: (tester) async {
+          await fpAdvance(tester, s.fp1Cta);
+          await tester.enterText(find.byType(TextField), '482913');
+          await tester.pump();
+          await fpAdvance(tester, s.fp2Cta);
+          await tester.enterText(find.byType(TextField).first, 'sunrise7');
+          await tester.pumpAndSettle();
+        });
+  });
+
+  testWidgets('02b forgot — done, English dark', (t) async {
+    final s = Strings.of('en');
+    await shoot(t,
+        name: '02b_forgot_done_en_dark',
+        dark: true,
+        screen: const ForgotPasswordScreen(initialEmail: 'rumana@example.com'),
+        before: (tester) async {
+          await fpAdvance(tester, s.fp1Cta);
+          await tester.enterText(find.byType(TextField), '482913');
+          await tester.pump();
+          await fpAdvance(tester, s.fp2Cta);
+          await tester.enterText(find.byType(TextField).at(0), 'sunrise7');
+          await tester.enterText(find.byType(TextField).at(1), 'sunrise7');
+          await tester.pump();
+          await fpAdvance(tester, s.fp3Cta);
+        });
+  });
+
+  // ── 09b notifications ───────────────────────────────────────────────
+
+  testWidgets('09b notifications, English', (t) async {
+    await shoot(t,
+        name: '09b_notifications_en', screen: const NotificationsScreen());
+  });
+
+  testWidgets('09b notifications, Bangla dark', (t) async {
+    await shoot(t,
+        name: '09b_notifications_bn_dark',
+        screen: const NotificationsScreen(),
+        lang: 'bn',
+        dark: true);
+  });
+
+  testWidgets('09b notifications — empty, English', (t) async {
+    await shoot(t,
+        name: '09b_notifications_empty_en',
+        screen: const NotificationsScreen(),
+        before: (tester) async {
+          final inbox =
+              AppScope.read(tester.element(find.byType(NotificationsScreen)))
+                  .inbox;
+          for (final x in inbox.items) {
+            inbox.dismiss(x.id);
+          }
           await tester.pumpAndSettle();
         });
   });
@@ -606,7 +803,9 @@ void main() {
   });
 
   testWidgets('09 home, English', (t) async {
-    await shoot(t, name: '09_home_en', screen: const HomeScreen());
+    await shoot(t,
+        name: '09_home_en',
+        screen: HomeScreen(clock: () => DateTime(2026, 8, 15, 14)));
   });
 
   // The home redesign inverts three ramps and swaps the weekday labels, so
@@ -614,7 +813,7 @@ void main() {
   testWidgets('09 home, Bangla dark', (t) async {
     await shoot(t,
         name: '09_home_bn_dark',
-        screen: const HomeScreen(),
+        screen: HomeScreen(clock: () => DateTime(2026, 8, 15, 14)),
         lang: 'bn',
         dark: true);
   });
@@ -644,19 +843,67 @@ void main() {
   // ── the Phase 2 half of the design ──────────────────────────────────
 
   testWidgets('10 tracker, English', (t) async {
-    await shoot(t, name: '10_tracker_en', screen: const TrackerScreen());
+    await shoot(t, name: '10_tracker_en', screen: TrackerScreen(clock: () => DateTime(2026, 8, 15, 14)));
   });
 
   testWidgets('10 tracker, Bangla dark', (t) async {
     await shoot(t,
         name: '10_tracker_bn_dark',
-        screen: const TrackerScreen(),
+        screen: TrackerScreen(clock: () => DateTime(2026, 8, 15, 14)),
         lang: 'bn',
         dark: true);
   });
 
-  testWidgets('11 scan / add a meal, English', (t) async {
-    await shoot(t, name: '11_scan_en', screen: const ScanScreen());
+  // Below the fold: water, the Add meal button and the per-meal cards.
+  testWidgets('10 tracker scrolled, English', (t) async {
+    await shoot(t,
+        name: '10b_tracker_meals_en',
+        screen: TrackerScreen(clock: () => DateTime(2026, 8, 15, 14)),
+        before: (t) async {
+          await t.drag(find.byType(Scrollable).first, const Offset(0, -760));
+          await t.pump(const Duration(milliseconds: 300));
+        });
+  });
+
+  testWidgets('13 add food, English', (t) async {
+    await shoot(t,
+        name: '13b_add_food_en',
+        screen: AddFoodScreen(slot: 'lunch', day: DateTime.now()));
+  });
+
+  testWidgets('13 add food, Bangla dark', (t) async {
+    await shoot(t,
+        name: '13b_add_food_bn_dark',
+        screen: AddFoodScreen(slot: 'lunch', day: DateTime.now()),
+        lang: 'bn',
+        dark: true);
+  });
+
+  testWidgets('11 scan start, English', (t) async {
+    await shoot(t, name: '11_scan_en', screen: ScanScreen(clock: _morning));
+  });
+
+  testWidgets('11 scan start, Bangla, dark', (t) async {
+    await shoot(t,
+        name: '11_scan_bn_dark',
+        screen: ScanScreen(clock: _morning),
+        lang: 'bn',
+        dark: true);
+  });
+
+  // The review step with the camera's proposals: a table match, an AI
+  // estimate for a dish the table lacks, and one flagged for checking.
+  testWidgets('11b scan review, English', (t) async {
+    await shoot(t,
+        name: '11b_scan_review_en',
+        screen: ScanScreen(previewRecognition: _scanProposals, clock: _morning));
+  });
+
+  testWidgets('11b scan review, Bangla', (t) async {
+    await shoot(t,
+        name: '11b_scan_review_bn',
+        screen: ScanScreen(previewRecognition: _scanProposals, clock: _morning),
+        lang: 'bn');
   });
 
   testWidgets('12 daily check-in, English', (t) async {

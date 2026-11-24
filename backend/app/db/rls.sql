@@ -72,6 +72,24 @@ CREATE POLICY consents_append ON consents FOR INSERT
 -- No UPDATE or DELETE policy: with FORCE RLS both are denied outright.
 REVOKE UPDATE, DELETE ON consents FROM PUBLIC;
 
+-- ── password_resets ──────────────────────────────────────────────────
+-- Account-scoped. The reset routes have no token, so they look the account up
+-- with app_lookup_account_for_auth and then declare it as the actor, the same
+-- bootstrap signup uses. A forgotten WHERE clause still sees only that one
+-- account's codes. Guarded so this file can run before the table exists.
+
+DO $$
+BEGIN
+  IF to_regclass('public.password_resets') IS NOT NULL THEN
+    ALTER TABLE password_resets ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE password_resets FORCE ROW LEVEL SECURITY;
+    DROP POLICY IF EXISTS password_resets_own ON password_resets;
+    CREATE POLICY password_resets_own ON password_resets
+      USING (account_id = app_current_account())
+      WITH CHECK (account_id = app_current_account());
+  END IF;
+END $$;
+
 -- ── profile_memberships ──────────────────────────────────────────────
 -- Defined FIRST because everything else depends on it, and it depends on
 -- nothing. Own columns only — no subqueries, so this always terminates.
@@ -222,7 +240,7 @@ BEGIN
   FOREACH t IN ARRAY ARRAY[
     'health_profiles', 'risk_assessments', 'vital_logs', 'safety_events',
     'meal_logs', 'meal_log_items', 'daily_checkins', 'activity_logs',
-    'coach_messages', 'reports'
+    'coach_messages', 'reports', 'water_logs', 'food_favourites'
   ]
   LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);

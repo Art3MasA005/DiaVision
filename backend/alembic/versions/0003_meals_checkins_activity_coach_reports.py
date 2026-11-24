@@ -26,6 +26,10 @@ from typing import Sequence
 
 import sqlalchemy as sa
 from alembic import op
+
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from app.db.migration_guards import Guarded  # noqa: E402
 from sqlalchemy.dialects import postgresql
 
 revision: str = "0003"
@@ -45,8 +49,11 @@ def _profile_fk(nullable: bool = False) -> sa.Column:
 
 
 def upgrade() -> None:
+    # Guarded: on a fresh database 0001 already built these from the models.
+    # See app/db/migration_guards.py.
+    g = Guarded(op)
     # ── reference data ────────────────────────────────────────────────
-    op.create_table(
+    g.create_table(
         "food_items",
         sa.Column("id", _UUID, primary_key=True),
         sa.Column("region", sa.String(2), nullable=False, server_default="bd"),
@@ -69,11 +76,11 @@ def upgrade() -> None:
         sa.CheckConstraint("source IN ('placeholder','licensed','user')",
                            name="ck_food_source"),
     )
-    op.create_index("ix_food_items_region", "food_items", ["region"])
-    op.create_index("ix_food_region_name", "food_items", ["region", "name_en"])
+    g.create_index("ix_food_items_region", "food_items", ["region"])
+    g.create_index("ix_food_region_name", "food_items", ["region", "name_en"])
 
     # ── meals ─────────────────────────────────────────────────────────
-    op.create_table(
+    g.create_table(
         "meal_logs",
         sa.Column("id", _UUID, primary_key=True),
         _profile_fk(),
@@ -88,11 +95,11 @@ def upgrade() -> None:
         sa.CheckConstraint("entry_method IN ('manual','photo')",
                            name="ck_meal_entry_method"),
     )
-    op.create_index("ix_meal_logs_profile_id", "meal_logs", ["profile_id"])
-    op.create_index("ix_meal_logs_eaten_on", "meal_logs", ["eaten_on"])
-    op.create_index("ix_meal_profile_day", "meal_logs", ["profile_id", "eaten_on"])
+    g.create_index("ix_meal_logs_profile_id", "meal_logs", ["profile_id"])
+    g.create_index("ix_meal_logs_eaten_on", "meal_logs", ["eaten_on"])
+    g.create_index("ix_meal_profile_day", "meal_logs", ["profile_id", "eaten_on"])
 
-    op.create_table(
+    g.create_table(
         "meal_log_items",
         sa.Column("id", _UUID, primary_key=True),
         sa.Column("meal_id", _UUID,
@@ -116,11 +123,11 @@ def upgrade() -> None:
             "recognition_confidence IS NULL OR recognition_confidence BETWEEN 0 AND 1",
             name="ck_item_confidence"),
     )
-    op.create_index("ix_meal_log_items_meal_id", "meal_log_items", ["meal_id"])
-    op.create_index("ix_meal_log_items_profile_id", "meal_log_items", ["profile_id"])
+    g.create_index("ix_meal_log_items_meal_id", "meal_log_items", ["meal_id"])
+    g.create_index("ix_meal_log_items_profile_id", "meal_log_items", ["profile_id"])
 
     # ── check-ins ─────────────────────────────────────────────────────
-    op.create_table(
+    g.create_table(
         "daily_checkins",
         sa.Column("id", _UUID, primary_key=True),
         _profile_fk(),
@@ -143,10 +150,10 @@ def upgrade() -> None:
                            name="ck_checkin_sleep"),
         sa.UniqueConstraint("profile_id", "checkin_on", name="uq_checkin_profile_day"),
     )
-    op.create_index("ix_daily_checkins_profile_id", "daily_checkins", ["profile_id"])
+    g.create_index("ix_daily_checkins_profile_id", "daily_checkins", ["profile_id"])
 
     # ── activity ──────────────────────────────────────────────────────
-    op.create_table(
+    g.create_table(
         "activity_logs",
         sa.Column("id", _UUID, primary_key=True),
         _profile_fk(),
@@ -162,10 +169,10 @@ def upgrade() -> None:
                            name="ck_activity_minutes"),
         sa.UniqueConstraint("profile_id", "activity_on", name="uq_activity_profile_day"),
     )
-    op.create_index("ix_activity_logs_profile_id", "activity_logs", ["profile_id"])
+    g.create_index("ix_activity_logs_profile_id", "activity_logs", ["profile_id"])
 
     # ── coach ─────────────────────────────────────────────────────────
-    op.create_table(
+    g.create_table(
         "coach_messages",
         sa.Column("id", _UUID, primary_key=True),
         _profile_fk(),
@@ -177,12 +184,12 @@ def upgrade() -> None:
                   server_default=sa.text("false")),
         sa.CheckConstraint("role IN ('user','coach')", name="ck_coach_role"),
     )
-    op.create_index("ix_coach_messages_profile_id", "coach_messages", ["profile_id"])
-    op.create_index("ix_coach_profile_time", "coach_messages",
+    g.create_index("ix_coach_messages_profile_id", "coach_messages", ["profile_id"])
+    g.create_index("ix_coach_profile_time", "coach_messages",
                     ["profile_id", "created_at"])
 
     # ── reports ───────────────────────────────────────────────────────
-    op.create_table(
+    g.create_table(
         "reports",
         sa.Column("id", _UUID, primary_key=True),
         _profile_fk(),
@@ -194,8 +201,8 @@ def upgrade() -> None:
         sa.Column("share_expires_at", sa.DateTime(timezone=True)),
         sa.CheckConstraint("period_end >= period_start", name="ck_report_period"),
     )
-    op.create_index("ix_reports_profile_id", "reports", ["profile_id"])
-    op.create_index("ix_report_profile_time", "reports", ["profile_id", "generated_at"])
+    g.create_index("ix_reports_profile_id", "reports", ["profile_id"])
+    g.create_index("ix_report_profile_time", "reports", ["profile_id", "generated_at"])
 
     # Re-run the whole policy file. It is idempotent — every CREATE POLICY is
     # preceded by DROP POLICY IF EXISTS — and this is what applies RLS to the

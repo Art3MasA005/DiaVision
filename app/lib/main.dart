@@ -21,9 +21,11 @@ import 'ui/screens/checkin_screen.dart';
 import 'ui/screens/coach_screen.dart';
 import 'ui/screens/disclaimer_screen.dart';
 import 'ui/screens/edge_states.dart';
+import 'ui/screens/forgot_password_screen.dart';
 import 'ui/screens/home_screen.dart';
 import 'ui/screens/insights_screen.dart';
 import 'ui/screens/labs_screen.dart';
+import 'ui/screens/notifications_screen.dart';
 import 'ui/screens/paywall_screen.dart';
 import 'ui/screens/population_screen.dart';
 import 'ui/screens/risk_screen.dart';
@@ -33,6 +35,9 @@ import 'ui/screens/splash_screen.dart';
 import 'ui/screens/tracker_screen.dart';
 import 'ui/screens/vitals_screen.dart';
 import 'ui/screens/wizard_screen.dart';
+
+//test@diavision.dev
+//Diavision123
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -72,7 +77,7 @@ class DiaVisionApp extends StatelessWidget {
                     systemNavigationBarColor: colors.bg),
           );
           return MaterialApp(
-            title: 'DiaVision',
+            title: 'Diavision',
             debugShowCheckedModeBanner: false,
             theme: materialTheme(colors),
             // Bangla and English are both first-class. Direction comes from
@@ -97,6 +102,7 @@ class DiaVisionApp extends StatelessWidget {
 abstract final class Routes {
   static const splash = '/';
   static const auth = '/auth';
+  static const forgotPassword = '/auth/forgot';
   static const disclaimer = '/disclaimer';
   static const wizard = '/wizard';
   static const population = '/population';
@@ -104,6 +110,7 @@ abstract final class Routes {
   static const risk = '/risk';
   static const labs = '/labs';
   static const home = '/home';
+  static const notifications = '/notifications';
   static const under18 = '/blocked/under-18';
   static const diagnosed = '/blocked/diagnosed';
 
@@ -121,6 +128,9 @@ abstract final class Routes {
   static final table = <String, WidgetBuilder>{
     splash: (_) => const SplashScreen(),
     auth: (_) => const AuthScreen(),
+    forgotPassword: (context) => ForgotPasswordScreen(
+          initialEmail: ModalRoute.of(context)?.settings.arguments as String?,
+        ),
     disclaimer: (_) => const DisclaimerScreen(),
     wizard: (_) => const WizardScreen(),
     population: (_) => const PopulationScreen(),
@@ -128,6 +138,7 @@ abstract final class Routes {
     risk: (_) => const RiskScreen(),
     labs: (_) => const LabsScreen(),
     home: (_) => const HomeScreen(),
+    notifications: (_) => const NotificationsScreen(),
     under18: (_) => const Under18Screen(),
     diagnosed: (_) => const AlreadyDiagnosedScreen(),
     tracker: (_) => const TrackerScreen(),

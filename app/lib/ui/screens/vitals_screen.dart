@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 import '../../data/api.dart';
 import '../../data/models.dart';
+import '../../main.dart';
 import '../../state/app_state.dart';
 import '../widgets/charts.dart';
 import '../widgets/kit.dart';
@@ -122,7 +123,16 @@ class _VitalsScreenState extends State<VitalsScreen> {
     return Shell(
       child: Column(
         children: [
-          ScreenHeader(title: s.vitalsHead),
+          ScreenHeader(
+            title: s.vitalsHead,
+            // Insights lives here in the handoff; the Home slot it used to
+            // borrow is the notifications bell again.
+            trailing: CircleIconButton(
+              icon: Icons24.barChart,
+              semanticLabel: s.insightsHead,
+              onPressed: () => Navigator.of(context).pushNamed(Routes.insights),
+            ),
+          ),
           Expanded(
             child: _loading
                 ? Center(child: CircularProgressIndicator(color: c.accent))

@@ -51,9 +51,13 @@ class NetworkFailure extends ApiFailure {
 /// 4xx/5xx that is not one of the three branches. [detail] is the server's own
 /// sentence where it gave one, because it usually says what to do.
 class ServerFailure extends ApiFailure {
-  const ServerFailure(this.status, super.message, {this.detail});
+  const ServerFailure(this.status, super.message, {this.detail, this.extra});
   final int status;
   final String? detail;
+
+  /// The rest of a structured error body (`attempts_left`, ...), when the
+  /// server sent one.
+  final Map<String, dynamic>? extra;
 }
 
 class Unauthorized extends ApiFailure {
@@ -120,6 +124,7 @@ class Api {
     Object? body,
     bool auth = true,
     bool allowRetryAfterRefresh = true,
+    Duration? timeout,
   }) async {
     final uri = Uri.parse('$baseUrl$path');
     http.Response res;
@@ -134,7 +139,7 @@ class Api {
         'DELETE' => _client.delete(uri, headers: headers, body: encoded),
         _ => throw ArgumentError('unsupported method $method'),
       };
-      res = await future.timeout(_timeout);
+      res = await future.timeout(timeout ?? _timeout);
       lastCallReachedServer = true;
     } on TimeoutException {
       lastCallReachedServer = false;
@@ -166,7 +171,10 @@ class Api {
     if (res.statusCode == 401 && auth && allowRetryAfterRefresh) {
       if (await _tryRefresh()) {
         return _send(method, path,
-            body: body, auth: auth, allowRetryAfterRefresh: false);
+            body: body,
+            auth: auth,
+            allowRetryAfterRefresh: false,
+            timeout: timeout);
       }
       await writeTokens(null);
       throw const Unauthorized();
@@ -214,7 +222,12 @@ class Api {
       final first = detail.first;
       if (first is Map) text = '${first['msg'] ?? ''}';
     }
-    return ServerFailure(res.statusCode, 'http_${res.statusCode}', detail: text);
+    // A `reason` is the server's machine-readable code; screens that know it
+    // say it in their own words. Otherwise the status is all there is.
+    final reason = detail is Map ? detail['reason'] : null;
+    return ServerFailure(
+        res.statusCode, reason is String ? reason : 'http_${res.statusCode}',
+        detail: text, extra: detail is Map ? detail.cast<String, dynamic>() : null);
   }
 
   Future<bool> _tryRefresh() async {
@@ -268,6 +281,23 @@ class Api {
 
   Future<Account> me() async =>
       Account.fromJson(await _send('GET', '/me') as Map<String, dynamic>);
+
+  // ── password reset (see data/password_reset.dart) ───────────────────
+
+  Future<void> requestPasswordReset(String email) => _send(
+      'POST', '/auth/password/reset-request',
+      auth: false, body: {'email': email});
+
+  Future<String> verifyPasswordReset(String email, String code) async {
+    final json = await _send('POST', '/auth/password/reset-verify',
+        auth: false, body: {'email': email, 'code': code});
+    return (json as Map<String, dynamic>)['reset_token'] as String;
+  }
+
+  Future<void> setPasswordWithReset(String resetToken, String newPassword) =>
+      _send('POST', '/auth/password/reset',
+          auth: false,
+          body: {'reset_token': resetToken, 'new_password': newPassword});
 
   // ── consent ─────────────────────────────────────────────────────────
 
@@ -401,11 +431,85 @@ class Api {
 
   Future<void> deleteMeal(String mealId) => _send('DELETE', '/meals/$mealId');
 
-  /// Photo recognition. Returns `modelAvailable: false` in this build — no
-  /// model is wired, and the screen falls back to manual entry.
-  Future<Recognition> recognizeFood(String profileId) async {
+  /// ± on a logged item. The server scales its stored nutrition.
+  Future<Meal> updateMealItem(String mealId, String itemId,
+      {required double quantity}) async {
+    final json = await _send('PATCH', '/meals/$mealId/items/$itemId',
+        body: {'quantity': quantity});
+    return Meal.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// Removes one item; a meal left empty is removed with it.
+  Future<void> deleteMealItem(String mealId, String itemId) =>
+      _send('DELETE', '/meals/$mealId/items/$itemId');
+
+  /// "Same as yesterday" — copies [from]'s meals (or one [slot]) onto [to].
+  /// A 404 means there was nothing to copy.
+  Future<List<Meal>> copyMeals(String profileId,
+      {required DateTime from, required DateTime to, String? slot}) async {
+    final json = await _send('POST', '/meals/copy', body: {
+      'profile_id': profileId,
+      'from_day': _date(from),
+      'to_day': _date(to),
+      'slot': ?slot,
+    }) as List;
+    return json.map((e) => Meal.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<List<Food>> _foodList(String path, String profileId) async {
+    final json =
+        await _send('GET', '$path${_qs({'profile_id': profileId})}') as List;
+    return json.map((e) => Food.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<List<Food>> recentFoods(String profileId) =>
+      _foodList('/foods/recent', profileId);
+
+  Future<List<Food>> frequentFoods(String profileId) =>
+      _foodList('/foods/frequent', profileId);
+
+  Future<List<Food>> favouriteFoods(String profileId) =>
+      _foodList('/foods/favourites', profileId);
+
+  Future<void> setFavourite(String profileId, String foodId, bool on) => _send(
+      on ? 'PUT' : 'DELETE',
+      '/foods/$foodId/favourite${_qs({'profile_id': profileId})}');
+
+  /// Water for a day: the new total of glasses, not an increment.
+  Future<WaterDay> setWater(String profileId,
+      {required int glasses, DateTime? on}) async {
+    final json = await _send('PUT', '/water', body: {
+      'profile_id': profileId,
+      'glasses': glasses,
+      if (on != null) 'day': _date(on),
+    });
+    return WaterDay.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// The goal sheet. Null resets to the computed goal. The answer is the
+  /// target after the §5.4 rails, which may differ from what was asked.
+  Future<DailyTarget?> setGoal(String profileId, int? kcal) async {
+    final json = await _send('PUT', '/plan/goal',
+        body: {'profile_id': profileId, 'kcal': kcal});
+    return json == null
+        ? null
+        : DailyTarget.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// Photo recognition. With no [imageBase64] this is a capability probe:
+  /// `modelAvailable` says whether the camera path can work right now. With a
+  /// photo it returns proposed items — proposals only, nothing is saved.
+  ///
+  /// The photo is analysed by the vision model and not stored by the server.
+  Future<Recognition> recognizeFood(String profileId,
+      {String? imageBase64}) async {
     final json = await _send(
-        'POST', '/food/recognize${_qs({'profile_id': profileId})}');
+      'POST',
+      '/food/recognize${_qs({'profile_id': profileId})}',
+      body: imageBase64 == null ? null : {'image_base64': imageBase64},
+      // A vision model needs longer than an ordinary round trip.
+      timeout: imageBase64 == null ? null : const Duration(seconds: 60),
+    );
     return Recognition.fromJson(json as Map<String, dynamic>);
   }
 

@@ -43,6 +43,10 @@ def _token(subject: str, expires: timedelta, token_type: str) -> str:
         "sub": subject,
         "type": token_type,
         "iat": now,
+        # `iat` is whole seconds. This is the exact issue time, so a session
+        # started a moment before a password reset is still recognised as
+        # older than it. See `issued_before`.
+        "iat_us": int(now.timestamp() * 1_000_000),
         "exp": now + expires,
         "jti": str(uuid.uuid4()),
     }
@@ -69,13 +73,34 @@ def decode_token(token: str, expect: str = "access") -> dict[str, Any]:
     return payload
 
 
-async def current_account_id(
+async def current_token(
     creds: HTTPAuthorizationCredentials | None = Depends(bearer),
-) -> uuid.UUID:
+) -> dict[str, Any]:
+    """The verified access-token claims. Cached per request by FastAPI."""
     if creds is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated",
                             headers={"WWW-Authenticate": "Bearer"})
-    payload = decode_token(creds.credentials, expect="access")
+    return decode_token(creds.credentials, expect="access")
+
+
+def issued_before(payload: dict[str, Any], cutoff: datetime | None) -> bool:
+    """Whether a token predates `accounts.tokens_valid_after`.
+
+    Compared to the microsecond via `iat_us`. A token without it predates
+    this check and falls back to whole-second `iat`.
+    """
+    if cutoff is None:
+        return False
+    iat_us = payload.get("iat_us")
+    if isinstance(iat_us, int):
+        return iat_us < int(cutoff.timestamp() * 1_000_000)
+    iat = payload.get("iat")
+    if not isinstance(iat, (int, float)):
+        return True
+    return int(iat) < int(cutoff.timestamp())
+
+
+async def current_account_id(payload: dict[str, Any] = Depends(current_token)) -> uuid.UUID:
     try:
         return uuid.UUID(payload["sub"])
     except (KeyError, ValueError) as exc:

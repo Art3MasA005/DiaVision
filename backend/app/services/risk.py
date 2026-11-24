@@ -43,6 +43,9 @@ def health_profile_to_record(health: Any, age_years: int | None = None) -> dict[
         "on_bp_meds": bool(health.on_bp_meds),
         "history_high_glucose": bool(health.history_high_glucose),
         "gestational_diabetes_history": health.gestational_diabetes_history,
+        # Calibration only: picks the published cutoff set, never reaches
+        # the model. None falls back to the region pack.
+        "ancestry_cutoff_group": getattr(health, "ancestry_cutoff_group", None),
     }
 
 
